@@ -1,0 +1,2249 @@
+---
+title: "Meta-analysis of cognition in drug-naive FEP"
+author: "Maria Lee"
+date: "2023-01-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The aim of this study is to do an updated meta-analysis of mean differences in cognitive test scores between drug-naive first episode psychosis patients and healthy controls (the previous meta-analysis was published by Fatorous-Bergman et al. in 2014), as well as to do a meta-analysis of variability in cognitive test scores for these two groups. We have reason to believe that first episode psychosis patients will exhibit greater variability than healthy controls do. 
+
+Cognitive test scores will be analyzed according to cognitive domain, i.e. the type of cognitive ability they aim to measure. The meta-analysis focused on 6 such domains from the MCCB battery - attention, speed of processing, working memory, verbal learning, visual learning as well as reasoning and problem solving. In the previous meta analysis executive functioning was also assessed, and this was then included as the 7th domain. 
+
+
+```{r}
+
+#First, load packages
+library(dplyr)
+library(ggplot2)
+library(readxl)
+library(metafor)
+library(meta)
+library(dmetar)
+
+#Then, set working directory
+setwd("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys")
+
+
+```
+
+
+I will begin by analyzing verbal memory
+
+# Verbal memory 
+
+```{r}
+
+#Load data
+Verb_mem_meta <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Verbal_memory_data.xlsx")
+
+#Now, tidying data. 
+
+#Change character vectors to numeric: 
+Verb_mem_meta$Mean_FEP <- as.numeric(Verb_mem_meta$Mean_FEP)
+Verb_mem_meta$SD_FEP <- as.numeric(Verb_mem_meta$SD_FEP)
+Verb_mem_meta$Mean_HC <- as.numeric(Verb_mem_meta$Mean_HC)
+Verb_mem_meta$SD_HC <- as.numeric(Verb_mem_meta$SD_HC)
+
+Verb_mem_data <- Verb_mem_meta
+
+```
+
+## Meta-analysis for all verbal learning tests combined
+
+
+```{r}
+#Now, meta-analysis for all verbal learning outcomes 
+#Making escalc object to use in meta-analysis
+verb_escalc <- escalc(measure = "SMD", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = Verb_mem_data, slab = paste(Study, Outcome_measure))
+#Random effects model meta-analysis
+verb_result <- rma(yi, vi, data=verb_escalc)
+summary(verb_result)
+verb_predict <- predict(verb_result) #to obtain numbers for the prediction interval and to add prediction interval to plot later
+
+#Add number of participants
+Verb_mem_data %>%
+     #keep only one entry per study to not count participants several times
+     distinct(Study, .keep_all = TRUE) %>% 
+     #then summarize
+     summarize(total_FEP <- sum(N_FEP),
+               total_HC <- sum(N_HC))
+
+#Make forest plot per study
+forest(verb_result, annotate = TRUE, showweights = TRUE, xlim=c(-9,4), slab = Study, mlab="Pooled Estimate", header=TRUE, ilab=Outcome_measure, ilab.xpos=-4, order = Outcome_measure, addpred = TRUE)
+text(-4, verb_result$k+2, "Outcome", font=2)
+text(1, verb_result$k+2, "Weights", font=2)
+
+#Make forest plot per test
+#Aggregate groups based on outcome-measure
+agg_verb <- aggregate(verb_escalc, cluster = Outcome_measure, V = vcov(verb_result, type = "obs"), addk= TRUE) 
+agg_verb <- agg_verb[c(2,12,13,14)] #fetching the columns of interest. 
+agg_verb
+
+verb_test_level_meta <- rma(yi, vi, method="EE", data=agg_verb, digits=3) #This makes a new meta-analysis. Using equal effects model. 
+verb_test_level_meta
+
+forest(verb_test_level_meta, xlim=c(-6,3), at = c(-2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1), slab = Outcome_measure, mlab="Pooled Estimate", header= "Test, outcome measure", ilab=ki, ilab.xpos=-3, addpred = TRUE, colout = "blue", col = "blue", border = "blue")
+text(-3, verb_test_level_meta$k+2, "Studies", font=2)
+addpoly(verb_predict, row = -1.5, level = verb_test_level_meta$k-1.5, addpred = TRUE, mlab = "Verbal Learning Pooled Estimate", col = "blue", border = "blue", font=2)
+
+#Funnel plot
+funnel(verb_result, main="Verbal Learning")
+
+#Eggers test
+regtest(verb_result, model = "lm")
+#Not significant
+
+```
+
+The meta-analysis of verbal learning shows that there is a large effect size in the difference between patients and controls, with a point estimate of -1.0739 (95 % confidence interval -1.2714 to -0.8763)
+
+
+
+## CVR of verbal memory
+
+```{r}
+
+#Making escalc object
+cvr_verb <- escalc("CVR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = Verb_mem_data)
+summary(cvr_verb)
+
+#Doing meta-analysis of CVR
+verb_cvr_result <- rma(yi, vi, data=cvr_verb)
+summary(verb_cvr_result) 
+
+#Adding CVR prediction interval
+verb_cvr_prediction <- predict(verb_cvr_result)
+exp(as.numeric(verb_cvr_prediction$pi.lb)) #prediction lower bound
+exp(as.numeric(verb_cvr_prediction$pi.ub)) #prediction upper bound
+
+#To aid interpretation of results, exponentiating log-numbers back to original scale when reporting CVR:
+exp(as.numeric(verb_cvr_result$beta)) #estimate
+exp(verb_cvr_result$ci.lb) #ci-lower bound
+exp(verb_cvr_result$ci.ub) #ci-upper bound
+
+#Making plot per study
+forest(verb_cvr_result, annotate = TRUE, showweights = TRUE, xlim=c(-3,6.5), slab = Study, mlab="CVR", header=TRUE, ilab=Comment, ilab.xpos=-0.5, order = Outcome_measure, cex = 0.8, transf = exp, refline = 1)
+text(-0.5, verb_cvr_result$k+2, "Outcome", font=2, cex=0.8)
+text(4.8, verb_cvr_result$k+2, "Weights", font=2, cex=0.8)
+text(1, verb_cvr_result$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+#Making plot per test
+agg_cvr_verb <- aggregate(cvr_verb, cluster = Outcome_measure, V = vcov(verb_cvr_result, type = "obs"), addk= TRUE) 
+agg_cvr_verb <- agg_cvr_verb[c(2,12,13,14)]
+agg_cvr_verb
+
+verb_test_level_cvr <- rma(yi, vi, method="EE", data=agg_cvr_verb, digits=3) #This makes a new meta-analysis. Using equal effects model. 
+verb_test_level_cvr
+
+forest(verb_test_level_cvr, xlim=c(-1, 4), alim = c(0.5, 4), at = c(0, 0.5, 1, 1.5, 2, 2.5, 3), annotate = TRUE, col = "blue", colout = "blue", border = "blue", slab = Outcome_measure, mlab="Verbal Learning Pooled Variability Estimate", header= "Test, outcome measure", ilab=ki, ilab.xpos= 0.4, cex = 0.8, transf = exp, refline = 1)
+text(0.4, verb_test_level_cvr$k+2, "Studies", font=2, cex = 0.8)
+text(1, verb_test_level_cvr$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+```
+
+### VR of Verbal Memory
+
+```{r}
+
+#Making escalc object
+vr_verb <- escalc("VR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = Verb_mem_data)
+summary(vr_verb)
+
+#Doing meta-analysis of CVR
+verb_vr_result <- rma(yi, vi, data=vr_verb)
+summary(verb_vr_result) 
+
+#To aid interpretation of results, exponentiating log-numbers back to original scale when reporting VR:
+exp(as.numeric(verb_vr_result$beta)) #estimate
+exp(verb_vr_result$ci.lb) #ci-lower bound
+exp(verb_vr_result$ci.ub) #ci-upper bound
+
+```
+
+
+
+
+# Visual learning
+
+## Meta-analysis of all visual learning tests combined
+
+
+```{r}
+#load data
+Vis_mem_data <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Visual_memory_data.xlsx")
+glimpse(Vis_mem_data)
+#Need to transform mean and sd to numeric
+Vis_mem_data$Mean_FEP <- as.numeric(Vis_mem_data$Mean_FEP)
+Vis_mem_data$SD_FEP <- as.numeric(Vis_mem_data$SD_FEP)
+Vis_mem_data$Mean_HC <- as.numeric(Vis_mem_data$Mean_HC)
+Vis_mem_data$SD_HC <- as.numeric(Vis_mem_data$SD_HC)
+
+#Now, meta-analysis for all visual learning outcomes 
+vis_escalc <- escalc(measure = "SMD", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = Vis_mem_data, slab = paste(Study, Outcome_measure))
+
+vis_result <- rma(yi, vi, data=vis_escalc)
+summary(vis_result)
+vis_prediction <- predict(vis_result) #to obtain numbers for the prediction interval and to add prediction interval to plot later
+
+#Add number of participants
+Vis_mem_data %>%
+     #keep only one entry per study to not count participants several times
+     distinct(Study, .keep_all = TRUE) %>% 
+     #then summarize
+     summarize(total_FEP <- sum(N_FEP),
+               total_HC <- sum(N_HC))
+
+#Make forest plot per study
+forest(vis_result, annotate = TRUE, showweights = TRUE, xlim=c(-7,4), slab = Study, mlab="Visual Learning Pooled Estimate", header=TRUE, ilab=Comment, ilab.xpos=-3, order = Outcome_measure, addpred = TRUE)
+text(-3, vis_result$k+2, "Outcome", font=2)
+text(1.5, vis_result$k+2, "Weights", font=2)
+
+#Funnel plot
+funnel(vis_result, main="Visual Learning")
+#Eggers test
+regtest(vis_result, model="lm")
+#Not significant
+
+```
+
+### Now, forest plot per test
+
+```{r}
+
+agg_vis <- aggregate(vis_escalc, cluster = Outcome_measure, V = vcov(vis_result, type = "obs"), addk= TRUE) 
+agg_vis <- agg_vis[c(2,12,13,14)]
+agg_vis
+
+vis_test_level_meta <- rma(yi, vi, method="EE", data=agg_vis, digits=3) #This makes a new meta-analysis. Using equal effects model. 
+vis_test_level_meta
+
+forest(vis_test_level_meta, xlim=c(-6,3), at = c(-2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1), col = "purple", colout = "purple", border = "purple", slab = Outcome_measure, mlab="Pooled Estimate", header= "Test, outcome measure", ilab=ki, ilab.xpos=-3, addpred = TRUE)
+text(-3, vis_test_level_meta$k+2, "Studies", font=2)
+addpoly(vis_prediction, row = -1.5, level = vis_test_level_meta$k-1.5, addpred = TRUE, col = "purple", border = "purple", mlab = "Visual Learning Pooled Estimate")
+
+```
+
+
+## CVR for Visual learning
+
+```{r}
+
+#Making escalc object
+cvr_vis <- escalc("CVR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = Vis_mem_data)
+summary(cvr_vis)
+
+#Doing meta-analysis of CVR
+vis_cvr_result <- rma(yi, vi, data=cvr_vis)
+summary(vis_cvr_result)
+
+#Adding CVR prediction interval
+vis_cvr_prediction <- predict(vis_cvr_result)
+exp(as.numeric(vis_cvr_prediction$pi.lb)) #prediction lower bound
+exp(as.numeric(vis_cvr_prediction$pi.ub)) #prediction upper bound
+
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(vis_cvr_result$beta)) #estimate
+exp(vis_cvr_result$ci.lb) #ci-lower bound
+exp(vis_cvr_result$ci.ub) #ci-upper bound
+
+#Making plot per study
+
+forest(vis_cvr_result, annotate = TRUE, showweights = TRUE, xlim=c(-1.5,5), slab = Study, mlab="CVR", header=TRUE, ilab=Comment, ilab.xpos=0.3, order = Outcome_measure, cex = 0.8, transf = exp, refline = 1)
+text(0.3, vis_cvr_result$k+2, "Outcome", font=2, cex=0.8)
+text(4, vis_cvr_result$k+2, "Weights", font=2, cex=0.8)
+text(1, vis_cvr_result$k+3, "Greater variability in controls | Greater variability in patients", font = 2, cex=0.8)
+
+```
+
+## CVR plot per test
+
+```{r}
+agg_cvr_vis <- aggregate(cvr_vis, cluster = Outcome_measure, V = vcov(vis_cvr_result, type = "obs"), addk= TRUE) 
+agg_cvr_vis <- agg_cvr_vis[c(2,12,13,14)]
+agg_cvr_vis
+
+vis_test_level_cvr <- rma(yi, vi, method="EE", data=agg_cvr_vis, digits=3) #This makes a new meta-analysis. Using equal effects model. 
+vis_test_level_cvr
+
+forest(vis_test_level_cvr, xlim=c(-1,4), alim = c(0.5, 4), annotate = TRUE, at = c(0, 0.5, 1, 1.5, 2, 2.5, 3), col = "purple", colout = "purple", border = "purple", slab = Outcome_measure, mlab="Visual Learning Pooled Variability Estimate", header= "Test, outcome measure", ilab=ki, ilab.xpos= 0.4, cex = 0.8, transf = exp, refline = 1)
+text(0.4, vis_test_level_cvr$k+2, "Studies", font=2, cex = 0.8)
+text(1, vis_test_level_cvr$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+
+```
+
+### VR for Visual learning
+
+```{r}
+#Making escalc object
+vr_vis <- escalc("VR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = Vis_mem_data)
+summary(vr_vis)
+
+#Doing meta-analysis of CVR
+vis_vr_result <- rma(yi, vi, data=vr_vis)
+summary(vis_vr_result)
+
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting VR:
+exp(as.numeric(vis_vr_result$beta)) #estimate
+exp(vis_vr_result$ci.lb) #ci-lower bound
+exp(vis_vr_result$ci.ub) #ci-upper bound
+
+```
+
+
+
+# Mazes
+
+```{r}
+
+#load data
+Mazes_data <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Mazes_data.xlsx")
+glimpse(Mazes_data)
+#Need to transform mean and sd to numeric
+Mazes_data$Mean_FEP <- as.numeric(Mazes_data$Mean_FEP)
+Mazes_data$SD_FEP <- as.numeric(Mazes_data$SD_FEP)
+Mazes_data$Mean_HC <- as.numeric(Mazes_data$Mean_HC)
+Mazes_data$SD_HC <- as.numeric(Mazes_data$SD_HC)
+
+#Now, meta-analysis for mazes
+mazes_escalc <- escalc(measure = "SMD", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = Mazes_data, slab = paste(Study, Outcome_measure))
+
+mazes_result <- rma(yi, vi, data=mazes_escalc)
+summary(mazes_result)
+mazes_prediction <- predict(mazes_result)
+
+#Add number of participants
+Mazes_data %>%
+     #keep only one entry per study to not count participants several times
+     distinct(Study, .keep_all = TRUE) %>% 
+     #then summarize
+     summarize(total_FEP <- sum(N_FEP),
+               total_HC <- sum(N_HC))
+
+#Make forest plot per study
+forest(mazes_result, annotate = TRUE, showweights = TRUE, xlim=c(-4.5,2), slab = Study, mlab="Pooled Estimate", header=TRUE, ilab=Outcome_measure, ilab.xpos=-2.5, order = Outcome_measure, addpred = TRUE)
+text(-2.5, mazes_result$k+2, "Outcome", font=2)
+text(0.5, mazes_result$k+2, "Weights", font=2)
+
+#Funnel plot
+funnel(mazes_result, main="Mazes")
+#Eggers test
+regtest(mazes_result, model="lm")
+#Not significant
+
+```
+
+## Plot per test
+
+```{r}
+
+agg_mazes <- aggregate(mazes_escalc, cluster = Outcome_measure, V = vcov(mazes_result, type = "obs"), addk= TRUE) 
+agg_mazes <- agg_mazes[c(2,12,13,14)]
+agg_mazes
+
+mazes_test_level_meta <- rma(yi, vi, method="EE", data=agg_mazes, digits=3) #This makes a new meta-analysis. Using equal effects model. 
+mazes_test_level_meta
+
+forest(mazes_test_level_meta, xlim=c(-6,3), at = c(-2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1), colout = "brown", col = "brown", border = "brown", slab = Outcome_measure, mlab="Reasoning Problem Solving Pooled Estimate", header= "Test, outcome measure", ilab=ki, ilab.xpos=-3, addpred = TRUE)
+text(-3, mazes_test_level_meta$k+2, "Studies", font=2)
+addpoly(mazes_prediction, rows = 1.5, level = mazes_test_level_meta$k-1.5, addpred = TRUE, mlab = "Prediction interval")
+
+
+```
+
+
+## Mazes CVR
+
+```{r}
+
+#Making escalc object
+cvr_mazes <- escalc("CVR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = Mazes_data)
+summary(cvr_mazes)
+
+#Doing meta-analysis of CVR
+mazes_cvr_result <- rma(yi, vi, data=cvr_mazes)
+summary(mazes_cvr_result)
+
+#Adding CVR prediction interval
+mazes_cvr_prediction <- predict(mazes_cvr_result)
+exp(as.numeric(mazes_cvr_prediction$pi.lb)) #prediction lower bound
+exp(as.numeric(mazes_cvr_prediction$pi.ub)) #prediction upper bound
+
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(mazes_cvr_result$beta)) #estimate
+exp(mazes_cvr_result$ci.lb) #ci-lower bound
+exp(mazes_cvr_result$ci.ub) #ci-upper bound
+
+#Making plot per study
+
+forest(mazes_cvr_result, annotate = TRUE, showweights = TRUE, xlim=c(-0.5,3.5), slab = Study, mlab="CVR", header=TRUE, ilab=Outcome_measure, ilab.xpos=0.5, order = Outcome_measure, cex = 0.8, transf = exp, refline = 1)
+text(0.5, mazes_cvr_result$k+2, "Outcome", font=2, cex=0.8)
+text(2.8, mazes_cvr_result$k+2, "Weights", font=2, cex=0.8)
+text(1, mazes_cvr_result$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+```
+
+
+
+
+
+## Mazes CVR plot per test
+
+```{r}
+
+agg_cvr_mazes <- aggregate(cvr_mazes, cluster = Outcome_measure, V = vcov(mazes_cvr_result, type = "obs"), addk= TRUE) 
+agg_cvr_mazes <- agg_cvr_mazes[c(2,12,13,14)]
+agg_cvr_mazes
+
+mazes_test_level_cvr <- rma(yi, vi, method="EE", data=agg_cvr_mazes, digits=3) #This makes a new meta-analysis? Using equal effects model. 
+mazes_test_level_cvr
+
+forest(mazes_test_level_cvr, xlim=c(-1,4), alim = c(0.5, 4), annotate = TRUE, at = c(0, 0.5, 1, 1.5, 2, 2.5, 3), col = "brown", border = "brown", colout = "brown", slab = Outcome_measure, mlab="Reasoning Problem Solving,", header= "Test, outcome measure", ilab=ki, ilab.xpos=0.4, cex = 0.8, transf = exp, refline = 1)
+text(-0.36, mazes_test_level_cvr$k-2.25, "Pooled Variability Estimate", cex = 0.82)
+text(0.4, mazes_test_level_cvr$k+2, "Studies", font=2, cex = 0.8)
+text(1, mazes_test_level_cvr$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+
+```
+
+### VR analysis Mazes
+
+```{r}
+#Making escalc object
+vr_mazes <- escalc("VR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = Mazes_data)
+summary(vr_mazes)
+
+#Doing meta-analysis of CVR
+mazes_vr_result <- rma(yi, vi, data=vr_mazes)
+summary(mazes_vr_result)
+
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(mazes_vr_result$beta)) #estimate
+exp(mazes_vr_result$ci.lb) #ci-lower bound
+exp(mazes_vr_result$ci.ub) #ci-upper bound
+
+```
+
+
+
+# Speed of processing
+
+## Pre-calculation checks
+
+We have a unit of analysis problem with the domains Speed of Processing, Working Memory and Executive Function, where some samples contribute with  more than one outcome-measure. In order to account for this we need to look at the correlation between these outcome-measures within samples. In the Speed of Processing domain we have access to 3 full datasets with individual participant data, which we use to analyze correlation coefficients for subtests within the domain for each study. This is in turn used to estimate the correlation coefficients for the multi-level meta-analysis. 
+
+```{r}
+#Loading the 3 full datasets that I have access to:
+Olivier <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Data/Olivier_MCCB_tidy.xlsx")
+#Remove anyone who has used medication
+Olivier <- dplyr::filter(Olivier, Medication == 0)
+#Remove NA individuals
+Olivier <- dplyr::filter(Olivier, ID != "1065" & ID != "1066" & ID != "2069" & ID != "2071" & ID!= "2075")
+
+Solis_Vivanco <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Data/Solis_Vivanko_2020.xlsx")
+
+#Rename group to better handle
+Solis_Vivanco <- dplyr::rename(Solis_Vivanco, group = GROUP_Kane_74_week_criteria)
+
+#Remove chronic SCZ from file (keeping only group 2 and 3)
+Solis_Vivanco <- dplyr::filter(Solis_Vivanco, group == 2 | group == 3)
+
+Kasp <- read_excel("/Volumes/k8/home/marlee/KaSP_Kognition/MATRICS_baseline_tidy.xls")
+info <- read_excel("/Volumes/k8/home/marlee/KaSP_Kognition/Sample_info_tidy.xlsx")
+wcst <- read_excel("/Volumes/k8/home/marlee/KaSP_Kognition/WCST_baseline_tidy.xlsx")
+
+#Clean data sets to only use certain info
+mccb_raw <- dplyr::select(Kasp, KaSP_ID:`CPT-IP`, `Overall Comp T`, `Neurocog Comp T`)
+mccb_raw <- dplyr::select(mccb_raw, -c(Base_FU, Handedness, `Test Date`, hvlt_r1:hvlt_r3, bvmt_r1:bvmt_r3, cpt_1:cpt_3))
+mccb_raw <- dplyr::select(mccb_raw, -Antipsychotics)
+
+#Removing those over 45
+mccb_raw <- dplyr::filter(mccb_raw, KaSP_ID != "CENP002")
+info <- dplyr::filter(info, KaSP_ID != "CENP002")
+mccb_raw <- dplyr::filter(mccb_raw, KaSP_ID != "MIDP008")
+info <- dplyr::filter(info, KaSP_ID != "MIDP008")
+
+info <- dplyr::select(info, -c(Gender:Years_education))
+
+#Merge datasets
+kasp_cog <- dplyr::full_join(mccb_raw, info, by = "KaSP_ID")
+kasp_wcst <- dplyr::full_join(wcst, info, by = "KaSP_ID")
+
+#CORRELATING tests!
+library(corrplot)
+library(dplyr)
+
+#SPEED OF PROCESSING
+Olivier_SoP <- dplyr::select(Olivier, TMT, BACSSC, Fluency)
+Olivier_SoP$TMT <- as.numeric(Olivier_SoP$TMT)
+Olivier_SoP <- Olivier_SoP %>% na.omit()
+
+corrplot(cor(Olivier_SoP))
+cor(Olivier_SoP)
+
+# #Flip TMT test scores so that higher values are better
+#kasp_cog$TMT_f <- ((max(kasp_cog$TMT) - kasp_cog$TMT) + min(kasp_cog$TMT))
+
+#Olivier_flipped
+Olivier_SoP$TMT_f <- ((max(Olivier_SoP$TMT) - Olivier_SoP$TMT) + min(Olivier_SoP$TMT))
+Olivier_SoP_f <- dplyr::select(Olivier_SoP, TMT_f, BACSSC, Fluency)
+cor(Olivier_SoP_f)
+#KaSP
+kasp_SoP <- dplyr::select(kasp_cog, TMT, `BACS SC`, Fluency)
+kasp_SoP <- kasp_SoP %>% na.omit() 
+cor(kasp_SoP)
+#Solis_Vivanco
+Solis_Vivanco_SoP <- dplyr::select(Solis_Vivanco, TMTT, BACSSCT, FLUENCYT)
+Solis_Vivanco_SoP <- Solis_Vivanco_SoP %>% na.omit()
+cor(Solis_Vivanco_SoP)
+  
+```
+
+
+So, the correlation between cognitive tests. 
+Speed of processing
+Olivier: (raw scores, where TMT scores have been flipped): TMT to BACSSC 0.61, TMT to Fluency 0.51, BACSSC to Fluency 0.64
+KaSP: (raw scores) TMT to BACSSC 0.54, TMT to Fluency 0.45, BACSSC to Fluency 0.50
+Solis_Vivanco: (T scores, uncorrected): TMT to BACSSC 0.70, TMT to Fluency 0.48, BACSSC to Fluency 0.62
+
+So, in total a correlation between 0.45 and 0.7. Median correlation is 0.54. Therefore, in the analysis correlations between subtests within a domain, within a study is assumed to be rho = 0.5
+
+
+## Now, actual meta-analysis
+
+```{r}
+
+#load data
+sop_data <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Speed_of_processing_data.xlsx")
+glimpse(sop_data)
+
+#Make Mean and SD numeric
+sop_data$Mean_FEP <- as.numeric(sop_data$Mean_FEP)
+sop_data$SD_FEP <- as.numeric(sop_data$SD_FEP)
+sop_data$Mean_HC <- as.numeric(sop_data$Mean_HC)
+sop_data$SD_HC <- as.numeric(sop_data$SD_HC)
+
+#Making TMT A raw values negative
+#Find rows that need to be changed
+row_to_make_neg <- which(sop_data$High_Low == "Low")
+
+#OBS, (semi)HARD CODED!!
+
+for (i in 1:length(row_to_make_neg)) {
+  
+  sop_data[row_to_make_neg[i],5] <- sop_data[row_to_make_neg[i],5]*-1 #FEP Mean column
+  sop_data[row_to_make_neg[i],7] <- sop_data[row_to_make_neg[i],7]*-1 #HC Mean column
+}
+
+sop_data
+
+#Meta analysis
+sop_escalc <- escalc(measure = "SMD", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = sop_data, slab = paste(Study, Outcome_measure))
+
+#We assume that effect sizes are correlated around 0.5 within studies/samples 
+V_sop <- vcalc(vi, cluster=Study, obs=Outcome_measure, data=sop_escalc, rho=0.5)
+
+### fit multilevel model using this approximate V matrix
+sop_multi <- rma.mv(yi, V_sop, random = ~ 1 | Study/Outcome_measure, data=sop_escalc, digits=3)
+sop_multi
+sop_prediction <- predict(sop_multi) #To get prediction interval
+#To get I2 values for multilevel model: 
+sop_i2 <- var.comp(sop_multi)
+summary(sop_i2)
+
+#Adding number of participants
+sop_data %>%
+  #keep only one entry per study to not count participants several times
+  distinct(Study, .keep_all = TRUE) %>% 
+  #then summarize
+  summarize(total_FEP <- sum(N_FEP),
+            total_HC <- sum(N_HC))
+
+#Make forest plot per study
+forest(sop_multi, annotate = TRUE, showweights = TRUE, xlim=c(-7,2), slab = Study, mlab="Pooled Estimate", header=TRUE, ilab=Comment, ilab.xpos=-5.5, order = Outcome_measure, addpred = TRUE)
+text(-5.5, sop_multi$k+2, "Outcome", font=2)
+text(0.5, sop_multi$k+2, "Weights", font=2)
+
+#Funnel plot
+funnel(sop_multi, main="Speed of processing")
+
+#Eggers test
+#fitting a simpler meta-analytic model to perform eggers test
+sop_pub_bias_result <- rma(yi, vi, data=sop_escalc)
+regtest(sop_pub_bias_result, model = "lm")
+# Statistically significant. p = 0.0166
+
+```
+
+## Now, making plot per test
+
+```{r}
+ 
+agg_sop <- aggregate(sop_escalc, cluster = Outcome_measure, V=vcov(sop_multi, type = "obs"), addk= TRUE) 
+#I get warning messages: "Estimates in cluster 'TMT_A_seconds' appear to have non-zero covariances with estimates belonging to different clusters." 
+#This makes sense though, as I ask the function to cluster variables using a different category (Outcome_measure) than how the variance/covariance was computed?
+agg_sop <- agg_sop[c(2,12,13,14)]
+agg_sop
+
+#I have to understand exactly what the function below does. The summary effect size comes out slightly different. 
+sop_test_meta <- rma(yi, vi, method="EE", data=agg_sop, digits=3) #This makes a new meta-analysis? Using equal effects model. 
+sop_test_meta
+
+forest(sop_test_meta, xlim=c(-6, 3), at = c(-2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1), colout = "green4", col = "green4", border = "green4", slab = Outcome_measure, mlab="Pooled Estimate", header="Test, outcome measure", ilab=ki, ilab.xpos=-3)
+text(-3, sop_test_meta$k+2, "Studies", font=2)
+addpoly(sop_prediction, rows = -1.5, level = sop_test_meta$k-1.5, addpred = TRUE, mlab = "Speed of Processing Pooled Estimate", col = "green4", border = "green4")
+
+```
+
+# CVR Speed of processing 
+
+```{r}
+#Load data again, to avoid negative values
+sop_cvr <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Speed_of_processing_data.xlsx")
+glimpse(sop_cvr)
+
+#Make Mean and SD numeric
+sop_cvr$Mean_FEP <- as.numeric(sop_cvr$Mean_FEP)
+sop_cvr$SD_FEP <- as.numeric(sop_cvr$SD_FEP)
+sop_cvr$Mean_HC <- as.numeric(sop_cvr$Mean_HC)
+sop_cvr$SD_HC <- as.numeric(sop_cvr$SD_HC)
+
+#Making escalc object
+cvr_SoP <- escalc("CVR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = sop_cvr)
+summary(cvr_SoP)
+
+### fit multilevel model, without special variance matrix 
+sop_multi_cvr <- rma.mv(yi, vi, random = ~ 1 | Study/Outcome_measure, data=cvr_SoP, digits=3)
+sop_multi_cvr
+
+#Adding CVR prediction interval
+sop_prediction_cvr <- predict(sop_multi_cvr) 
+exp(as.numeric(sop_prediction_cvr$pi.lb)) #prediction lower bound
+exp(as.numeric(sop_prediction_cvr$pi.ub)) #prediction upper bound
+
+#To get I2 values for multilevel model: 
+sop_cvr_i2 <- var.comp(sop_multi_cvr)
+summary(sop_cvr_i2)
+
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(sop_multi_cvr$beta)) #estimate
+exp(sop_multi_cvr$ci.lb) #ci-lower bound
+exp(sop_multi_cvr$ci.ub) #ci-upper bound
+
+#Adding number of participants
+sop_cvr %>%
+  #keep only one entry per study to not count participants several times
+  distinct(Study, .keep_all = TRUE) %>% 
+  #then summarize
+  summarize(total_FEP <- sum(N_FEP),
+            total_HC <- sum(N_HC))
+
+#Making plot per study
+forest(sop_multi_cvr, annotate = TRUE, showweights = TRUE, xlim=c(-3.5,7), slab = Study, mlab="CVR", header=TRUE, ilab=Outcome_measure, ilab.xpos=-0.5, order = Outcome_measure, cex = 0.8, transf = exp, refline = 1)
+text(-0.5, sop_multi_cvr$k+2, "Outcome", font=2, cex=0.8)
+text(5, sop_multi_cvr$k+2, "Weights", font=2, cex=0.8)
+text(1, sop_multi_cvr$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+#Making plot per test
+agg_sop_cvr <- aggregate(cvr_SoP, cluster = Outcome_measure, V=vcov(sop_multi_cvr, type = "obs"), addk= TRUE) 
+agg_sop_cvr <- agg_sop_cvr[c(2,12,13,14)]
+agg_sop_cvr
+
+sop_cvr_test_meta <- rma(yi, vi, method="EE", data=agg_sop_cvr, digits=3) #This makes a new meta-analysis. Using equal effects model. 
+sop_cvr_test_meta
+
+forest(sop_cvr_test_meta, xlim=c(-1,4), alim=c(0.5, 4), olim= c(-1, 4), at = c(0, 0.5, 1, 1.5, 2, 2.5, 3), col = "green4", border = "green4", colout = "green4", slab = Outcome_measure, mlab="Speed of Processing, ", header="Test, outcome measure", ilab = ki, ilab.xpos = 0.4, transf = exp, refline = 1)
+text(0.4, sop_cvr_test_meta$k+2, "Studies", font = 2, cex = 0.8)
+text(-0.34, sop_cvr_test_meta$k-6.35, "Pooled Variability Estimate", cex = 1)
+text(1, sop_cvr_test_meta$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+
+
+```
+
+## VR for Speed of processing
+
+```{r}
+#Making escalc object
+vr_SoP <- escalc("VR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = sop_cvr)
+summary(vr_SoP)
+
+### fit multilevel model, without special variance matrix 
+sop_multi_vr <- rma.mv(yi, vi, random = ~ 1 | Study/Outcome_measure, data=vr_SoP, digits=3)
+sop_multi_vr
+
+#Adding VR prediction interval
+sop_prediction_vr <- predict(sop_multi_vr) 
+exp(as.numeric(sop_prediction_vr$pi.lb)) #prediction lower bound
+exp(as.numeric(sop_prediction_vr$pi.ub)) #prediction upper bound
+
+#To get I2 values for multilevel model: 
+sop_vr_i2 <- var.comp(sop_multi_vr)
+summary(sop_vr_i2)
+
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(sop_multi_vr$beta)) #estimate
+exp(sop_multi_vr$ci.lb) #ci-lower bound
+exp(sop_multi_vr$ci.ub) #ci-upper bound
+
+
+```
+
+
+
+
+##  CVR Speed of processing Sensitivity analysis - all except TMT
+
+```{r}
+
+#Load data again, to avoid negative values
+sop_cvrS <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Speed_of_processing_data.xlsx")
+glimpse(sop_cvrS)
+
+#Make Mean and SD numeric
+sop_cvrS$Mean_FEP <- as.numeric(sop_cvrS$Mean_FEP)
+sop_cvrS$SD_FEP <- as.numeric(sop_cvrS$SD_FEP)
+sop_cvrS$Mean_HC <- as.numeric(sop_cvrS$Mean_HC)
+sop_cvrS$SD_HC <- as.numeric(sop_cvrS$SD_HC)
+
+#Filter out TMT (the only outcome measure where low scores are better than high scores) in order to aid interpretation of CVR
+
+sop_cvrS <- dplyr::filter(sop_cvrS, High_Low == "High")
+
+#Making escalc object
+cvr_SoP_S <- escalc("CVR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = sop_cvrS)
+summary(cvr_SoP_S)
+
+### fit multilevel model, without special variance matrix 
+sop_multi_cvrS <- rma.mv(yi, vi, random = ~ 1 | Study/Outcome_measure, data=cvr_SoP_S, digits=3)
+sop_multi_cvrS
+
+#Adding CVR prediction interval
+sop_prediction_cvrS <- predict(sop_multi_cvrS) 
+exp(as.numeric(sop_prediction_cvrS$pi.lb)) #prediction lower bound
+exp(as.numeric(sop_prediction_cvrS$pi.ub)) #prediction upper bound
+
+#To get I2 values for multilevel model: 
+sop_cvr_i2_S <- var.comp(sop_multi_cvrS)
+summary(sop_cvr_i2_S)
+
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(sop_multi_cvrS$beta)) #estimate
+exp(sop_multi_cvrS$ci.lb) #ci-lower bound
+exp(sop_multi_cvrS$ci.ub) #ci-upper bound
+
+#Adding number of participants
+sop_cvrS %>%
+  #keep only one entry per study to not count participants several times
+  distinct(Study, .keep_all = TRUE) %>% 
+  #then summarize
+  summarize(total_FEP <- sum(N_FEP),
+            total_HC <- sum(N_HC))
+
+#Making plot per study
+forest(sop_multi_cvrS, annotate = TRUE, showweights = TRUE, xlim=c(-3.5,7), slab = Study, mlab="CVR", header=TRUE, ilab=Outcome_measure, ilab.xpos=-0.5, order = Outcome_measure, cex = 0.8, transf = exp, refline = 1)
+text(-0.5, sop_multi_cvrS$k+2, "Outcome", font=2, cex=0.8)
+text(5, sop_multi_cvrS$k+2, "Weights", font=2, cex=0.8)
+text(1, sop_multi_cvrS$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+#Making plot per test
+agg_sop_cvrS <- aggregate(cvr_SoP, cluster = Outcome_measure, V=vcov(sop_multi_cvr, type = "obs"), addk= TRUE) 
+agg_sop_cvrS <- agg_sop_cvr[c(2,12,13,14)]
+agg_sop_cvrS
+
+sop_cvr_test_metaS <- rma(yi, vi, method="EE", data=agg_sop_cvr, digits=3) #This makes a new meta-analysis. Using equal effects model. 
+sop_cvr_test_metaS
+
+forest(sop_cvr_test_metaS, xlim=c(-1,4), at = c(0, 0.5, 1, 1.5, 2, 2.5, 3), col = "green4", border = "green4", colout = "green4", slab = Outcome_measure, mlab="Speed of Processing, ", header="Test, outcome measure", ilab = ki, ilab.xpos = 0.5, transf = exp, refline = 1)
+text(0.5, sop_cvr_test_metaS$k+2, "Studies", font = 2, cex = 0.8)
+text(-0.22, sop_cvr_test_metaS$k-7.5, "Pooled Variability Estimate", cex = 1)
+text(1, sop_cvr_test_metaS$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+```
+
+### VR for Speed of Processing Sensitivity analysis - all except TMT
+
+```{r}
+#Making escalc object
+vr_SoP <- escalc("VR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = sop_cvrS)
+summary(vr_SoP)
+
+### fit multilevel model, without special variance matrix 
+sop_multi_vr <- rma.mv(yi, vi, random = ~ 1 | Study/Outcome_measure, data=vr_SoP, digits=3)
+sop_multi_vr
+
+#Adding VR prediction interval
+sop_prediction_vr <- predict(sop_multi_vr) 
+exp(as.numeric(sop_prediction_vr$pi.lb)) #prediction lower bound
+exp(as.numeric(sop_prediction_vr$pi.ub)) #prediction upper bound
+
+#To get I2 values for multilevel model: 
+sop_vr_i2 <- var.comp(sop_multi_vr)
+summary(sop_vr_i2)
+
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(sop_multi_vr$beta)) #estimate
+exp(sop_multi_vr$ci.lb) #ci-lower bound
+exp(sop_multi_vr$ci.ub) #ci-upper bound
+
+
+
+```
+
+### CVR for TMT A
+
+```{r}
+
+#Load data again, to avoid negative values
+tmt_cvr <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Speed_of_processing_data.xlsx")
+glimpse(tmt_cvr)
+
+#Make Mean and SD numeric
+tmt_cvr$Mean_FEP <- as.numeric(tmt_cvr$Mean_FEP)
+tmt_cvr$SD_FEP <- as.numeric(tmt_cvr$SD_FEP)
+tmt_cvr$Mean_HC <- as.numeric(tmt_cvr$Mean_HC)
+tmt_cvr$SD_HC <- as.numeric(tmt_cvr$SD_HC)
+
+#Filter out TMT (the only outcome measure where low scores are better than high scores) in order to aid interpretation of CVR
+
+tmt_cvr <- dplyr::filter(tmt_cvr, High_Low == "Low")
+
+#Making escalc object
+cvr_tmt <- escalc("CVR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = tmt_cvr)
+summary(cvr_tmt)
+
+### do not need multilevel model 
+#Doing meta-analysis of CVR
+tmt_cvr_result <- rma(yi, vi, data=cvr_tmt)
+summary(tmt_cvr_result)
+
+#Adding CVR prediction interval
+tmt_prediction_cvr <- predict(tmt_cvr_result) 
+exp(as.numeric(tmt_prediction_cvr$pi.lb)) #prediction lower bound
+exp(as.numeric(tmt_prediction_cvr$pi.ub)) #prediction upper bound
+
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(tmt_cvr_result$beta)) #estimate
+exp(tmt_cvr_result$ci.lb) #ci-lower bound
+exp(tmt_cvr_result$ci.ub) #ci-upper bound
+
+#Adding number of participants
+tmt_cvr %>%
+  #keep only one entry per study to not count participants several times
+  distinct(Study, .keep_all = TRUE) %>% 
+  #then summarize
+  summarize(total_FEP <- sum(N_FEP),
+            total_HC <- sum(N_HC))
+
+## NEED TO CHANGE TO GET ACCURATE DATA IN FIGURE - tmt-
+
+#Making plot per study
+forest(sop_multi_cvr, annotate = TRUE, showweights = TRUE, xlim=c(-3.5,7), slab = Study, mlab="CVR", header=TRUE, ilab=Outcome_measure, ilab.xpos=-0.5, order = Outcome_measure, cex = 0.8, transf = exp, refline = 1)
+text(-0.5, sop_multi_cvr$k+2, "Outcome", font=2, cex=0.8)
+text(5, sop_multi_cvr$k+2, "Weights", font=2, cex=0.8)
+text(1, sop_multi_cvr$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+#Making plot per test
+agg_sop_cvr <- aggregate(cvr_SoP, cluster = Outcome_measure, V=vcov(sop_multi_cvr, type = "obs"), addk= TRUE) 
+agg_sop_cvr <- agg_sop_cvr[c(2,12,13,14)]
+agg_sop_cvr
+
+sop_cvr_test_meta <- rma(yi, vi, method="EE", data=agg_sop_cvr, digits=3) #This makes a new meta-analysis. Using equal effects model. 
+sop_cvr_test_meta
+
+forest(sop_cvr_test_meta, xlim=c(-1,4), at = c(0, 0.5, 1, 1.5, 2, 2.5, 3), col = "green4", border = "green4", colout = "green4", slab = Outcome_measure, mlab="Speed of Processing, ", header="Test, outcome measure", ilab = ki, ilab.xpos = 0.5, transf = exp, refline = 1)
+text(0.5, sop_cvr_test_meta$k+2, "Studies", font = 2, cex = 0.8)
+text(-0.22, sop_cvr_test_meta$k-7.5, "Pooled Variability Estimate", cex = 1)
+text(1, sop_cvr_test_meta$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+
+
+```
+
+
+
+### VR for TMT A
+
+```{r}
+
+#Making escalc object
+vr_tmt <- escalc("VR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = tmt_cvr)
+summary(vr_tmt)
+
+### do not need multilevel model 
+#Doing meta-analysis of CVR
+tmt_vr_result <- rma(yi, vi, data=vr_tmt)
+summary(tmt_vr_result)
+
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting VR:
+exp(as.numeric(tmt_vr_result$beta)) #estimate
+exp(tmt_vr_result$ci.lb) #ci-lower bound
+exp(tmt_vr_result$ci.ub) #ci-upper bound
+
+```
+
+
+# Working memory
+## Pre-calculation checks
+
+I will check correlations between Spatial Span and LNS in the 3 full samples of individual participant data that I have access to.  
+
+```{r}
+Solis_Vivanco_WM <- dplyr::select(Solis_Vivanco, WMSIIIT, LNST)
+Solis_Vivanco_WM <- Solis_Vivanco_WM %>% na.omit()
+cor(Solis_Vivanco_WM)
+
+Olivier_WM <- dplyr::select(Olivier, `WMS-III`, LNS)
+Olivier_WM <- Olivier_WM %>% na.omit()
+cor(Olivier_WM)
+
+kasp_WM <- dplyr::select(kasp_cog, `WMS-III SS`, LNS)
+kasp_WM <- kasp_WM %>% na.omit()
+cor(kasp_WM)
+
+```
+
+The working memory tests of the MCCB (Spatial Span III and LNS) have a correlation of:
+0.68 (Solis_Vivanko, uncorrected T-values)
+0.56 (Olivier, raw scores)
+0.41 (KaSP)
+
+I put more faith in the raw scores, hence I think a correlation of 0.5 is reasonable to assume. 
+
+## Now actual meta-analysis for WM
+
+```{r}
+
+#load data
+wm_data <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Working_memory_data_updated.xlsx")
+glimpse(wm_data)
+
+#Make Mean and SD numeric
+wm_data$Mean_FEP <- as.numeric(wm_data$Mean_FEP)
+wm_data$SD_FEP <- as.numeric(wm_data$SD_FEP)
+wm_data$Mean_HC <- as.numeric(wm_data$Mean_HC)
+wm_data$SD_HC <- as.numeric(wm_data$SD_HC)
+
+#Making WM error values negative
+#Find rows that need to be changed
+row_to_make_neg <- which(wm_data$High_Low == "Low")
+
+for (i in 1:length(row_to_make_neg)) {
+  
+  wm_data[row_to_make_neg[i],5] <- wm_data[row_to_make_neg[i],5]*-1 #FEP Mean column
+  wm_data[row_to_make_neg[i],7] <- wm_data[row_to_make_neg[i],7]*-1 #HC Mean column
+}
+
+#Meta analysis
+wm_escalc <- escalc(measure = "SMD", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = wm_data, slab = paste(Study, Outcome_measure))
+
+#We assume that effect sizes are correlated around 0.5 within studies/samples 
+V_wm <- vcalc(vi, cluster=Study, obs=Comment, data=wm_escalc, rho=0.5)
+
+#I had some trouble with variance-covariance matrix when I harmonized the Outcome_measure labels. Jessen_2019 contains two outome measures from the same test, which used the same Outcome_label. This did not work. So in the code above I use the "Comment" column for the observation cluster. This is a column where I kept the full Outcome-measure label. 
+
+### fit multilevel model using this approximate V matrix
+wm_multi <- rma.mv(yi, V_wm, random = ~ 1 | Study/Outcome_measure, data=wm_escalc, digits=3)
+wm_multi
+prediction_wm <- predict(wm_multi) #To get prediction interval
+
+#To get I2 values for multilevel model: 
+wm_i2 <- var.comp(wm_multi)
+summary(wm_i2)
+
+#Adding number of participants
+wm_data %>%
+  #keep only one entry per study to not count participants several times
+  distinct(Study, .keep_all = TRUE) %>% 
+  #then summarize
+  summarize(total_FEP <- sum(N_FEP),
+            total_HC <- sum(N_HC))
+
+#Make forest plot per study
+forest(wm_multi, annotate = TRUE, showweights = TRUE, xlim=c(-20,10), slab = Study, mlab="Pooled Estimate", header=TRUE, ilab=Comment, ilab.xpos=-9, order = Outcome_measure, addpred = TRUE)
+text(-9, wm_multi$k+2, "Outcome", font=2)
+text(3, wm_multi$k+2, "Weights", font=2)
+
+#Funnel plot
+funnel(wm_multi, main="Working Memory")
+#Eggers test
+#fitting a simpler meta-analytic model to perform eggers test
+wm_pub_bias_result <- rma(yi, vi, data=wm_escalc)
+regtest(wm_pub_bias_result, model = "lm")
+# Statistically significant. p = 0.0243
+
+
+```
+
+
+## Now making plot per test
+
+```{r}
+
+agg_wm <- aggregate(wm_escalc, cluster = Outcome_measure, V=vcov(wm_multi, type = "obs"), addk= TRUE) 
+agg_wm <- agg_wm[c(2,12,13,14)]
+agg_wm
+
+wm_test_meta <- rma(yi, vi, method="EE", data=agg_wm, digits=3) #This makes a new meta-analysis. Using equal effects model. 
+wm_test_meta
+
+forest(wm_test_meta, xlim=c(-6,3), col = "red", colout = "red", border = "red", at = c(-2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1), slab = Outcome_measure, mlab="Pooled Estimate", header=TRUE, ilab=ki, ilab.xpos=-3)
+text(-3, wm_test_meta$k+2, "Studies", font=2)
+addpoly(prediction_wm, rows = -1.7, level = wm_test_meta$k-1.7, col = "red", border = "red", addpred = TRUE, mlab = "Prediction interval") #Adding prediction interval
+
+
+```
+
+# CVR for Working Memory
+
+```{r}
+#Load data again, do not want negative values for CVR analysis
+
+#load data
+wm_cvr_data <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Working_memory_data_updated.xlsx")
+glimpse(wm_cvr_data)
+
+#Make Mean and SD numeric
+wm_cvr_data$Mean_FEP <- as.numeric(wm_cvr_data$Mean_FEP)
+wm_cvr_data$SD_FEP <- as.numeric(wm_cvr_data$SD_FEP)
+wm_cvr_data$Mean_HC <- as.numeric(wm_cvr_data$Mean_HC)
+wm_cvr_data$SD_HC <- as.numeric(wm_cvr_data$SD_HC)
+
+#Making escalc object
+cvr_wm <- escalc("CVR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = wm_cvr_data)
+summary(cvr_wm)
+
+### fit multilevel model using this approximate V matrix
+wm_multi_cvr <- rma.mv(yi, vi, random = ~ 1 | Study/Outcome_measure, data=cvr_wm, digits=3)
+wm_multi_cvr
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(wm_multi_cvr$beta)) #estimate
+exp(wm_multi_cvr$ci.lb) #ci-lower bound
+exp(wm_multi_cvr$ci.ub) #ci-upper bound
+
+#Adding CVR prediction interval
+wm_prediction_cvr <- predict(wm_multi_cvr) 
+exp(as.numeric(wm_prediction_cvr$pi.lb)) #prediction lower bound
+exp(as.numeric(wm_prediction_cvr$pi.ub)) #prediction upper bound
+
+#To get I2 values for multilevel model: 
+wm_cvr_i2 <- var.comp(wm_multi_cvr)
+summary(wm_cvr_i2)
+
+#Adding number of participants
+wm_cvr_data %>%
+  #keep only one entry per study to not count participants several times
+  distinct(Study, .keep_all = TRUE) %>% 
+  #then summarize
+  summarize(total_FEP <- sum(N_FEP),
+            total_HC <- sum(N_HC))
+
+
+#Forest plot using multi-level analysis
+forest(wm_multi_cvr, annotate = TRUE, showweights = TRUE, xlim=c(-9,14), slab = Study, mlab="CVR", header=TRUE, ilab=Outcome_measure, ilab.xpos=-1.8, order = Outcome_measure, cex = 0.8, transf = exp, refline = 1)
+text(-1.8, wm_multi_cvr$k+2, "Outcome", font=2, cex=0.8)
+text(10, wm_multi_cvr$k+2, "Weights", font=2, cex=0.8)
+text(1, wm_multi_cvr$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+#Making plot per test
+agg_wm_cvr <- aggregate(cvr_wm, cluster = Outcome_measure, V=vcov(wm_multi_cvr, type = "obs"), addk= TRUE) 
+agg_wm_cvr <- agg_wm_cvr[c(2,12,13,14)]
+agg_wm_cvr
+
+wm_cvr_test_meta <- rma(yi, vi, method="EE", data=agg_wm_cvr, digits=3) #This makes a new meta-analysis. Using equal effects model. 
+wm_cvr_test_meta
+
+forest(wm_cvr_test_meta, xlim = c(-1, 4), alim = c(-1, 4), olim = c(-1, 4), at = c(0, 0.5, 1, 1.5, 2, 2.5, 3), col = "red", border = "red", colout = "red", slab = Outcome_measure, mlab="Working memory", header="Test, outcome measure", ilab=ki, ilab.xpos=0.4, transf = exp, refline = 1)
+text(0.4, wm_cvr_test_meta$k+2, "Studies", font=2)
+text(-0.05, wm_cvr_test_meta$k-11.50, "Pooled Variability Estimate", cex = 1)
+text(1, wm_cvr_test_meta$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+
+```
+
+## VR for Working Memory
+
+```{r}
+#Making escalc object
+vr_wm <- escalc("VR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = wm_cvr_data)
+summary(vr_wm)
+
+### fit multilevel model using this approximate V matrix
+wm_multi_vr <- rma.mv(yi, vi, random = ~ 1 | Study/Outcome_measure, data=vr_wm, digits=3)
+wm_multi_vr
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(wm_multi_vr$beta)) #estimate
+exp(wm_multi_vr$ci.lb) #ci-lower bound
+exp(wm_multi_vr$ci.ub) #ci-upper bound
+
+
+```
+
+
+
+## CVR for Working Memory - Sensitivity Analysis
+
+```{r}
+#Load data again, do not want negative values for CVR analysis
+
+#load data
+wm_cvr_dataS <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Working_memory_data.xlsx")
+glimpse(wm_cvr_dataS)
+
+#Make Mean and SD numeric
+wm_cvr_dataS$Mean_FEP <- as.numeric(wm_cvr_dataS$Mean_FEP)
+wm_cvr_dataS$SD_FEP <- as.numeric(wm_cvr_dataS$SD_FEP)
+wm_cvr_dataS$Mean_HC <- as.numeric(wm_cvr_dataS$Mean_HC)
+wm_cvr_dataS$SD_HC <- as.numeric(wm_cvr_dataS$SD_HC)
+
+#Remove the very few outcome measures where low scores are good (to make CVR and VR values interpretable)
+wm_cvr_dataS <- dplyr::filter(wm_cvr_dataS, High_Low == "High")
+
+#Making escalc object
+cvr_wmS <- escalc("CVR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = wm_cvr_dataS)
+summary(cvr_wmS)
+
+### fit multilevel model using this approximate V matrix
+wm_multi_cvrS <- rma.mv(yi, vi, random = ~ 1 | Study/Outcome_measure, data=cvr_wmS, digits=3)
+wm_multi_cvrS
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(wm_multi_cvrS$beta)) #estimate
+exp(wm_multi_cvrS$ci.lb) #ci-lower bound
+exp(wm_multi_cvrS$ci.ub) #ci-upper bound
+
+#Adding CVR prediction interval
+wm_prediction_cvrS <- predict(wm_multi_cvrS) 
+exp(as.numeric(wm_prediction_cvrS$pi.lb)) #prediction lower bound
+exp(as.numeric(wm_prediction_cvrS$pi.ub)) #prediction upper bound
+
+#To get I2 values for multilevel model: 
+wm_cvr_i2S <- var.comp(wm_multi_cvrS)
+summary(wm_cvr_i2S)
+
+#Adding number of participants
+wm_cvr_dataS %>%
+  #keep only one entry per study to not count participants several times
+  distinct(Study, .keep_all = TRUE) %>% 
+  #then summarize
+  summarize(total_FEP <- sum(N_FEP),
+            total_HC <- sum(N_HC))
+
+
+#Forest plot using multi-level analysis
+forest(wm_multi_cvrS, annotate = TRUE, showweights = TRUE, xlim=c(-9,14), slab = Study, mlab="CVR", header=TRUE, ilab=Outcome_measure, ilab.xpos=-1.8, order = Outcome_measure, cex = 0.8, transf = exp, refline = 1)
+text(-1.8, wm_multi_cvrS$k+2, "Outcome", font=2, cex=0.8)
+text(10, wm_multi_cvrS$k+2, "Weights", font=2, cex=0.8)
+text(1, wm_multi_cvrS$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+#Making plot per test
+agg_wm_cvrS <- aggregate(cvr_wmS, cluster = Outcome_measure, V=vcov(wm_multi_cvrS, type = "obs"), addk= TRUE) 
+agg_wm_cvrS <- agg_wm_cvrS[c(2,12,13,14)]
+agg_wm_cvrS
+
+wm_cvr_test_metaS <- rma(yi, vi, method="EE", data=agg_wm_cvrS, digits=3) #This makes a new meta-analysis. Using equal effects model. 
+wm_cvr_test_metaS
+
+forest(wm_cvr_test_metaS, xlim=c(-10,10), annotate = TRUE, showweights = TRUE, slab = Outcome_measure, mlab="Pooled Estimate", header="Test, outcome measure", ilab=ki, ilab.xpos=-1.5, transf = exp, refline = 1)
+text(-1.5, wm_cvr_test_metaS$k+2, "Studies", font=2)
+text(8.5, wm_cvr_test_metaS$k+2, "Weights", font=2)
+text(1, wm_cvr_test_metaS$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+
+```
+
+### VR for Working Memory - Sensitivity Analysis 
+
+```{r}
+
+#Making escalc object
+vr_wmS <- escalc("VR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = wm_cvr_dataS)
+summary(vr_wmS)
+
+### fit multilevel model using this approximate V matrix
+wm_multi_vrS <- rma.mv(yi, vi, random = ~ 1 | Study/Outcome_measure, data=vr_wmS, digits=3)
+wm_multi_vrS
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(wm_multi_vrS$beta)) #estimate
+exp(wm_multi_vrS$ci.lb) #ci-lower bound
+exp(wm_multi_vrS$ci.ub) #ci-upper bound
+
+
+
+
+```
+
+
+
+#Attention
+
+```{r}
+
+#load data
+att_data <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Attention_data.xlsx")
+glimpse(att_data)
+
+#Make Mean and SD numeric
+att_data$Mean_FEP <- as.numeric(att_data$Mean_FEP)
+att_data$SD_FEP <- as.numeric(att_data$SD_FEP)
+att_data$Mean_HC <- as.numeric(att_data$Mean_HC)
+att_data$SD_HC <- as.numeric(att_data$SD_HC)
+
+#Now, meta analysis
+#Meta analysis
+att_escalc <- escalc(measure = "SMD", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = att_data, slab = paste(Study, Outcome_measure))
+
+att_result <- rma(yi, vi, data=att_escalc)
+summary(att_result)
+att_prediction <- predict(att_result) #To get prediction interval
+
+#Adding number of participants
+att_data %>%
+  #keep only one entry per study to not count participants several times
+  distinct(Study, .keep_all = TRUE) %>% 
+  #then summarize
+  summarize(total_FEP <- sum(N_FEP),
+            total_HC <- sum(N_HC))
+
+#Make forest plot per study
+forest(att_result, annotate = TRUE, showweights = TRUE, xlim=c(-9,5), slab = Study, mlab="Pooled Estimate", header=TRUE, ilab=Outcome_measure, ilab.xpos=-4, order = Outcome_measure, addpred = TRUE)
+text(-4, att_result$k+2, "Outcome", font=2)
+text(1.2, att_result$k+2, "Weights", font=2)
+
+#Funnel plot
+funnel(att_result, main="Attention")
+#Eggers test
+regtest(att_result, model = "lm")
+#Not significant
+
+```
+
+## Now, making plots per test
+
+```{r}
+
+agg_att <- aggregate(att_escalc, cluster = Outcome_measure, V=vcov(att_result, type = "obs"), addk= TRUE) 
+
+agg_att <- agg_att[c(2,13,14,15)]
+agg_att
+
+att_test_meta <- rma(yi, vi, method="EE", data=agg_att, digits=3) #This makes a new meta-analysis. Using equal effects model. 
+att_test_meta
+
+forest(att_test_meta, xlim=c(-6,3), at = c(-2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1), colout = "orange", col = "orange", border = "orange", slab = Outcome_measure, mlab="Pooled Estimate", header="Test, outcome measure", ilab=ki, ilab.xpos=-3)
+text(-3, att_test_meta$k+2, "Studies", font=2)
+addpoly(att_prediction, rows = -1.5, level = att_test_meta$k-1.5, addpred = TRUE, mlab = "Attention Pooled Estimate", col = "orange", border = "orange") #Adding prediction interval
+
+
+```
+
+## CVR for attention
+
+```{r}
+
+#Making escalc object
+cvr_att <- escalc("CVR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = att_data)
+summary(cvr_att)
+
+#Doing meta-analysis of CVR
+att_cvr_result <- rma(yi, vi, data=cvr_att)
+summary(att_cvr_result)
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(att_cvr_result$beta)) #estimate
+exp(att_cvr_result$ci.lb) #ci-lower bound
+exp(att_cvr_result$ci.ub) #ci-upper bound
+
+#Adding CVR prediction interval
+att_prediction_cvr <- predict(att_cvr_result) 
+exp(as.numeric(att_prediction_cvr$pi.lb)) #prediction lower bound
+exp(as.numeric(att_prediction_cvr$pi.ub)) #prediction upper bound
+
+#Making plot per study
+
+forest(att_cvr_result, annotate = TRUE, showweights = TRUE, xlim=c(-8,9), slab = Study, mlab="CVR", header=TRUE, ilab=Outcome_measure, ilab.xpos=-2.2, order = Outcome_measure, cex = 0.8, transf = exp, refline = 1)
+text(-2.2, att_cvr_result$k+2, "Outcome", font=2, cex=0.8)
+text(8.5, att_cvr_result$k+2, "Weights", font=2, cex=0.8)
+text(1, att_cvr_result$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+
+```
+
+
+## CVR plots per test Attention
+
+```{r}
+
+agg_cvr_att <- aggregate(cvr_att, cluster = Outcome_measure, V = vcov(att_cvr_result, type = "obs"), addk= TRUE) 
+agg_cvr_att <- agg_cvr_att[c(2,12,13,14, 15)]
+agg_cvr_att
+
+att_test_level_cvr <- rma(yi, vi, method="EE", data=agg_cvr_att, digits=3) #This makes a new meta-analysis. Using equal effects model. 
+att_test_level_cvr
+
+forest(att_test_level_cvr, xlim=c(-1,4), alim = c(0.5, 4), olim = c(-1, 4), at = c(0, 0.5, 1, 1.5, 2, 2.5, 3), col = "orange", colout = "orange", border = "orange", slab = Outcome_measure, mlab="Attention", header= "Test, outcome measure", ilab=ki, ilab.xpos= 0.4, cex = 0.8, transf = exp, refline = 1)
+text(0.4, att_test_level_cvr$k+2, "Studies", font=2, cex = 0.8)
+text(-0.05, att_test_level_cvr$k-6.5, "Pooled Variability Estimate", cex = 0.8)
+text(1, att_test_level_cvr$k+3, "Greater variability in controls | Greater variability in patients", font = 2, cex=0.8)
+
+```
+
+### VR for Attention
+
+```{r}
+
+#Making escalc object
+vr_att <- escalc("VR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = att_data)
+summary(vr_att)
+
+#Doing meta-analysis of CVR
+att_vr_result <- rma(yi, vi, data=vr_att)
+summary(att_vr_result)
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(att_vr_result$beta)) #estimate
+exp(att_vr_result$ci.lb) #ci-lower bound
+exp(att_vr_result$ci.ub) #ci-upper bound
+
+
+
+```
+
+
+#Executive function
+## Pre-calculation checks
+
+For the WCST, I only have access to one dataset (my own). Checking correlation between categories completed and perseverative errors. 
+
+```{r}
+
+kasp_wcst <- dplyr::select(kasp_wcst, CatCompl, PersErrors)
+kasp_wcst <- kasp_wcst %>% na.omit()
+cor(kasp_wcst)
+
+```
+
+Correlation coefficient between these are -0.69. 
+
+
+#Actual meta-analysis
+
+```{r}
+
+#load data
+ef_data <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Executive_function_data_updated.xlsx")
+glimpse(ef_data)
+
+#Make Mean and SD numeric
+ef_data$Mean_FEP <- as.numeric(ef_data$Mean_FEP)
+ef_data$SD_FEP <- as.numeric(ef_data$SD_FEP)
+ef_data$Mean_HC <- as.numeric(ef_data$Mean_HC)
+ef_data$SD_HC <- as.numeric(ef_data$SD_HC)
+
+#Making WCST error measures negative
+#Find rows that need to be changed
+row_to_make_neg <- which(ef_data$High_Low == "Low")
+
+for (i in 1:length(row_to_make_neg)) {
+  
+  ef_data[row_to_make_neg[i],5] <- ef_data[row_to_make_neg[i],5]*-1 #FEP Mean column
+  ef_data[row_to_make_neg[i],7] <- ef_data[row_to_make_neg[i],7]*-1 #HC Mean column
+}
+
+#Meta analysis
+ef_escalc <- escalc(measure = "SMD", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = ef_data, slab = paste(Study, Outcome_measure))
+
+#We assume that effect sizes are correlated around 0.6 within studies/samples 
+V_ef <- vcalc(vi, cluster=Study, obs=Outcome_measure, data=ef_escalc, rho=0.6)
+
+### fit multilevel model using this approximate V matrix
+ef_multi <- rma.mv(yi, V_ef, random = ~ 1 | Study/Outcome_measure, data=ef_escalc, digits=3)
+ef_multi
+ef_prediction <- predict(ef_multi) #To get prediction interval
+
+#To get I2 values for multilevel model: 
+ef_i2 <- var.comp(ef_multi)
+summary(ef_i2)
+
+#Adding number of participants
+ef_data %>%
+  #keep only one entry per study to not count participants several times
+  distinct(Study, .keep_all = TRUE) %>% 
+  #then summarize
+  summarize(total_FEP <- sum(N_FEP),
+            total_HC <- sum(N_HC))
+
+#Make forest plot per study
+forest(ef_multi, annotate = TRUE, showweights = TRUE, xlim=c(-20,10), slab = Study, mlab="Pooled Estimate", header=TRUE, ilab= ef_data$Comment, ilab.xpos=-9, order = Outcome_measure, addpred = TRUE)
+text(-9, ef_multi$k+2, "Outcome", font=2)
+text(1, ef_multi$k+2, "Weights", font=2)
+
+#Funnel plot
+funnel(ef_multi, main="Executive Function")
+
+#Eggers test
+#fitting a simpler meta-analytic model to perform eggers test
+ef_pub_bias_result <- rma(yi, vi, data=ef_escalc)
+regtest(ef_pub_bias_result, model = "lm")
+# Statistically significant. p = 0.0494
+
+```
+
+
+
+## Executive function, plots per test/outcome measures
+
+```{r}
+
+agg_ef <- aggregate(ef_escalc, cluster = Outcome_measure, V=vcov(ef_multi, type = "obs"), addk= TRUE) 
+agg_ef <- agg_ef[c(2,13,14,15)]
+agg_ef
+
+ef_test_meta <- rma(yi, vi, method="EE", data=agg_ef, digits=3) #This makes a new meta-analysis. Using equal effects model. 
+ef_test_meta
+
+forest(ef_test_meta, xlim=c(-6,3), at = c(-2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1), col = "deeppink3", border = "deeppink3", colout = "deeppink3", slab = Outcome_measure, mlab="Pooled Estimate", header=TRUE, ilab=ki, ilab.xpos=-3)
+text(-3, ef_test_meta$k+2, "Studies", font=2)
+addpoly(ef_prediction, rows = -1.5, level = ef_test_meta$k-1.5, addpred = TRUE, col = "deeppink3", border = "deeppink3", mlab = "Executive Function Pooled Estimate") #Adding prediction interval
+
+```
+
+# CVR for Executive Function
+
+```{r}
+ 
+#LOAD DATA AGAIN, DO NOT WANT NEGATIVE VALUES FOR CVR
+ef_data_cvr <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Executive_function_data_updated.xlsx")
+glimpse(ef_data_cvr)
+
+#Make Mean and SD numeric
+ef_data_cvr$Mean_FEP <- as.numeric(ef_data_cvr$Mean_FEP)
+ef_data_cvr$SD_FEP <- as.numeric(ef_data_cvr$SD_FEP)
+ef_data_cvr$Mean_HC <- as.numeric(ef_data_cvr$Mean_HC)
+ef_data_cvr$SD_HC <- as.numeric(ef_data_cvr$SD_HC)
+
+#Making escalc object
+cvr_ef <- escalc("CVR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = ef_data_cvr)
+summary(cvr_ef)
+
+### fit multilevel model, without defining variance matrix
+ef_multi_cvr <- rma.mv(yi, vi, random = ~ 1 | Study/Outcome_measure, data=cvr_ef, digits=3)
+ef_multi_cvr
+
+#Doing meta-analysis of CVR
+ef_cvr_result <- rma(yi, vi, data=cvr_ef)
+summary(ef_cvr_result)
+
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(ef_cvr_result$beta)) #estimate
+exp(ef_cvr_result$ci.lb) #ci-lower bound
+exp(ef_cvr_result$ci.ub) #ci-upper bound
+
+#Adding CVR prediction interval
+ef_prediction_cvr <- predict(ef_cvr_result)
+exp(as.numeric(ef_prediction_cvr$pi.lb)) #prediction lower bound
+exp(as.numeric(ef_prediction_cvr$pi.ub)) #prediction upper bound
+
+#Adding number of participants
+ef_data_cvr %>%
+  #keep only one entry per study to not count participants several times
+  distinct(Study, .keep_all = TRUE) %>% 
+  #then summarize
+  summarize(total_FEP <- sum(N_FEP),
+            total_HC <- sum(N_HC))
+
+#Forest plot using multi-level analysis
+forest(ef_multi_cvr, annotate = TRUE, showweights = TRUE, xlim=c(-15,10), slab = Study, mlab="CVR", header=TRUE, ilab=Outcome_measure, ilab.xpos=-4, order = Outcome_measure, cex = 0.8, transf = exp, refline = 1)
+text(-4, ef_multi_cvr$k+2, "Outcome", font=2, cex=0.8)
+text(10, ef_multi_cvr$k+2, "Weights", font=2, cex=0.8)
+text(1, ef_multi_cvr$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+#Making plot per test
+agg_ef_cvr <- aggregate(cvr_ef, cluster = Outcome_measure, V=vcov(ef_multi_cvr, type = "obs"), addk= TRUE) 
+agg_ef_cvr <- agg_ef_cvr[c(2,12,13,14,15)]
+agg_ef_cvr
+
+ef_cvr_test_meta <- rma(yi, vi, method="EE", data=agg_ef_cvr, digits=3) #This makes a new meta-analysis. Using equal effects model. 
+ef_cvr_test_meta
+
+forest(ef_cvr_test_meta, xlim=c(-1,4), alim = c(0.5, 4), olim = c(-1, 4), at = c(0, 0.5, 1, 1.5, 2, 2.5, 3), col = "deeppink3", border = "deeppink3", colout = "deeppink3", slab = Outcome_measure, mlab="Executive Function", header = "Test, outcome measure", ilab=ki, ilab.xpos= 0.4, transf = exp, refline = 1)
+text(0.4, ef_cvr_test_meta$k+2, "Studies", font=2)
+text(0.05, ef_cvr_test_meta$k-8.5, "Pooled Variability Estimate", cex=1)
+text(1, ef_cvr_test_meta$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+```
+
+## VR for Executive Function
+
+```{r}
+
+#Making escalc object
+vr_ef <- escalc("VR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = ef_data_cvr)
+summary(vr_ef)
+
+#Doing meta-analysis of CVR
+ef_vr_result <- rma(yi, vi, data=vr_ef)
+summary(ef_vr_result)
+
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(ef_vr_result$beta)) #estimate
+exp(ef_vr_result$ci.lb) #ci-lower bound
+exp(ef_vr_result$ci.ub) #ci-upper bound
+
+
+```
+ 
+
+
+
+## CVR for Executive function Sensitivity Analysis - High values good
+
+```{r}
+
+#LOAD DATA AGAIN, DO NOT WANT NEGATIVE VALUES FOR CVR
+ef_data_cvr_high <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Executive_function_data.xlsx")
+glimpse(ef_data_cvr_high)
+
+#Make Mean and SD numeric
+ef_data_cvr_high$Mean_FEP <- as.numeric(ef_data_cvr_high$Mean_FEP)
+ef_data_cvr_high$SD_FEP <- as.numeric(ef_data_cvr_high$SD_FEP)
+ef_data_cvr_high$Mean_HC <- as.numeric(ef_data_cvr_high$Mean_HC)
+ef_data_cvr_high$SD_HC <- as.numeric(ef_data_cvr_high$SD_HC)
+
+#Now, filtering out only the outcome measures where high scores = better performance. In order to make CVR analysis interpretable. 
+ef_data_cvr_high <- dplyr::filter(ef_data_cvr_high, High_Low == "High")
+
+#This dataset has no studies that contribute several outcome measures. Hence, we can use "normal" meta-analysis instead of multi-level one. 
+
+#Making escalc object
+cvr_ef_high <- escalc("CVR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = ef_data_cvr_high)
+summary(cvr_ef_high)
+
+#Doing meta-analysis of CVR
+ef_cvr_result_high <- rma(yi, vi, data=cvr_ef_high)
+summary(ef_cvr_result_high)
+
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(ef_cvr_result_high$beta)) #estimate
+exp(ef_cvr_result_high$ci.lb) #ci-lower bound
+exp(ef_cvr_result_high$ci.ub) #ci-upper bound
+
+#Adding CVR prediction interval
+ef_prediction_cvr_high <- predict(ef_cvr_result_high)
+exp(as.numeric(ef_prediction_cvr_high$pi.lb)) #prediction lower bound
+exp(as.numeric(ef_prediction_cvr_high$pi.ub)) #prediction upper bound
+
+#Adding number of participants
+ef_data_cvr_high %>%
+  #keep only one entry per study to not count participants several times
+  distinct(Study, .keep_all = TRUE) %>% 
+  #then summarize
+  summarize(total_FEP <- sum(N_FEP),
+            total_HC <- sum(N_HC))
+
+##I PROBABLY NEED TO CHANGE STUFF HERE
+
+#Forest plot using multi-level analysis
+forest(ef_multi_cvr, annotate = TRUE, showweights = TRUE, xlim=c(-15,10), slab = Study, mlab="CVR", header=TRUE, ilab=Outcome_measure, ilab.xpos=-4, order = Outcome_measure, cex = 0.8, transf = exp, refline = 1)
+text(-4, ef_multi_cvr$k+2, "Outcome", font=2, cex=0.8)
+text(8, ef_multi_cvr$k+2, "Weights", font=2, cex=0.8)
+text(1, ef_multi_cvr$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+#Making plot per test
+agg_ef_cvr <- aggregate(cvr_ef, cluster = Outcome_measure, V=vcov(ef_multi_cvr, type = "obs"), addk= TRUE) 
+agg_ef_cvr <- agg_ef_cvr[c(2,12,13,14)]
+agg_ef_cvr
+
+ef_cvr_test_meta <- rma(yi, vi, method="EE", data=agg_ef_cvr, digits=3) #This makes a new meta-analysis. Using equal effects model. 
+ef_cvr_test_meta
+
+forest(ef_cvr_test_meta, annotate = TRUE, showweights = TRUE, xlim=c(-25,25), slab = Outcome_measure, mlab="Pooled Estimate", header = "Test, outcome measure", ilab=ki, ilab.xpos=-4, transf = exp, refline = 1)
+text(-4, ef_cvr_test_meta$k+2, "Studies", font=2)
+text(8, ef_cvr_test_meta$k+2, "Weights", font=2, cex=0.8)
+text(1, ef_cvr_test_meta$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+```
+
+### VR for Executive Function Sensitivity Analysis 
+
+```{r}
+
+#Making escalc object
+vr_ef_high <- escalc("VR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = ef_data_cvr_high)
+summary(vr_ef_high)
+
+#Doing meta-analysis of CVR
+ef_vr_result_high <- rma(yi, vi, data=vr_ef_high)
+summary(ef_vr_result_high)
+
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(ef_vr_result_high$beta)) #estimate
+exp(ef_vr_result_high$ci.lb) #ci-lower bound
+exp(ef_vr_result_high$ci.ub) #ci-upper bound
+
+```
+
+
+### CVR for Executive Function - Low values good
+
+```{r}
+
+#LOAD DATA AGAIN, DO NOT WANT NEGATIVE VALUES FOR CVR
+ef_data_cvr <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Executive_function_data.xlsx")
+glimpse(ef_data_cvr)
+
+#Make Mean and SD numeric
+ef_data_cvr$Mean_FEP <- as.numeric(ef_data_cvr$Mean_FEP)
+ef_data_cvr$SD_FEP <- as.numeric(ef_data_cvr$SD_FEP)
+ef_data_cvr$Mean_HC <- as.numeric(ef_data_cvr$Mean_HC)
+ef_data_cvr$SD_HC <- as.numeric(ef_data_cvr$SD_HC)
+
+#Now, filtering out only the outcome measures where low scores = better performance. In order to make CVR analysis interpretable. 
+ef_data_low <- dplyr::filter(ef_data_low, High_Low == "Low")
+
+ef_data_low$Mean_HC <- as.numeric(ef_data_low$Mean_HC)
+
+#Making escalc object
+cvr_ef_low <- escalc("CVR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = ef_data_low)
+summary(cvr_ef_low)
+
+### fit multilevel model, without defining variance matrix
+ef_multi_cvr_low <- rma.mv(yi, vi, random = ~ 1 | Study/Outcome_measure, data=cvr_ef_low, digits=3)
+ef_multi_cvr_low
+
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(ef_multi_cvr_low$beta)) #estimate
+exp(ef_multi_cvr_low$ci.lb) #ci-lower bound
+exp(ef_multi_cvr_low$ci.ub) #ci-upper bound
+
+#Adding CVR prediction interval
+ef_prediction_cvr_low <- predict(ef_multi_cvr_low) 
+exp(as.numeric(ef_prediction_cvr_low$pi.lb)) #prediction lower bound
+exp(as.numeric(ef_prediction_cvr_low$pi.ub)) #prediction upper bound
+
+#To get I2 values for multilevel model: 
+ef_cvr_i2_low <- var.comp(ef_multi_cvr_low)
+summary(ef_cvr_i2_low)
+
+#Adding number of participants
+ef_data_low %>%
+  #keep only one entry per study to not count participants several times
+  distinct(Study, .keep_all = TRUE) %>% 
+  #then summarize
+  summarize(total_FEP <- sum(N_FEP),
+            total_HC <- sum(N_HC))
+
+#Forest plot using multi-level analysis
+forest(ef_multi_cvr, annotate = TRUE, showweights = TRUE, xlim=c(-15,10), slab = Study, mlab="CVR", header=TRUE, ilab=Outcome_measure, ilab.xpos=-4, order = Outcome_measure, cex = 0.8, transf = exp, refline = 1)
+text(-4, ef_multi_cvr$k+2, "Outcome", font=2, cex=0.8)
+text(8, ef_multi_cvr$k+2, "Weights", font=2, cex=0.8)
+text(1, ef_multi_cvr$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+#Making plot per test
+agg_ef_cvr <- aggregate(cvr_ef, cluster = Outcome_measure, V=vcov(ef_multi_cvr, type = "obs"), addk= TRUE) 
+agg_ef_cvr <- agg_ef_cvr[c(2,12,13,14)]
+agg_ef_cvr
+
+ef_cvr_test_meta <- rma(yi, vi, method="EE", data=agg_ef_cvr, digits=3) #This makes a new meta-analysis. Using equal effects model. 
+ef_cvr_test_meta
+
+forest(ef_cvr_test_meta, annotate = TRUE, showweights = TRUE, xlim=c(-25,25), slab = Outcome_measure, mlab="Pooled Estimate", header = "Test, outcome measure", ilab=ki, ilab.xpos=-4, transf = exp, refline = 1)
+text(-4, ef_cvr_test_meta$k+2, "Studies", font=2)
+text(8, ef_cvr_test_meta$k+2, "Weights", font=2, cex=0.8)
+text(1, ef_cvr_test_meta$k+3, "Greater variability in controls   |   Greater variability in patients", font = 2, cex=0.8)
+
+
+
+```
+
+## VR for Executive Function - Low values
+
+```{r}
+
+#Making escalc object
+vr_ef_low <- escalc("VR", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = ef_data_low)
+summary(vr_ef_low)
+
+### fit multilevel model, without defining variance matrix
+ef_multi_vr_low <- rma.mv(yi, vi, random = ~ 1 | Study/Outcome_measure, data=vr_ef_low, digits=3)
+ef_multi_vr_low
+
+#To aid interpretation of results, exponentiation log-numbers back to original scale when reporting CVR:
+exp(as.numeric(ef_multi_vr_low$beta)) #estimate
+exp(ef_multi_vr_low$ci.lb) #ci-lower bound
+exp(ef_multi_vr_low$ci.ub) #ci-upper bound
+
+
+```
+
+
+
+# Meta-regression
+
+### Verbal memory
+
+```{r}
+#Load data
+reg_verb <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Verbal_memory_reg_data.xlsx") 
+#Change character vectors to numeric: 
+reg_verb$Mean_FEP <- as.numeric(reg_verb$Mean_FEP)
+reg_verb$SD_FEP <- as.numeric(reg_verb$SD_FEP)
+reg_verb$Mean_HC <- as.numeric(reg_verb$Mean_HC)
+reg_verb$SD_HC <- as.numeric(reg_verb$SD_HC)
+
+#Add weighted age variable
+reg_verb$Age_FEP <- as.numeric(reg_verb$Age_FEP) #Patient age
+reg_verb$Age_HC <- as.numeric(reg_verb$Age_HC) # HC age
+reg_verb <- reg_verb %>%
+  rowwise() %>%
+  mutate(w_mean_age = (weighted.mean(across(starts_with("Age")), across(starts_with("N_")), na.rm = TRUE)))
+
+#Add weighted education variable
+reg_verb$Edu_mean_FEP <- as.numeric(reg_verb$Edu_mean_FEP) #Patient education
+reg_verb$Edu_mean_HC <- as.numeric(reg_verb$Edu_mean_HC) #HC education
+reg_verb <- reg_verb %>%
+  rowwise() %>%
+  mutate(w_mean_edu = (weighted.mean(across(starts_with("Edu")), across(starts_with("N_")), na.rm = TRUE)))
+
+#Add gender variable (percentage female)
+reg_verb$Female_FEP <- as.numeric(reg_verb$Female_FEP)#make numeric
+reg_verb$Female_HC <- as.numeric(reg_verb$Female_HC)
+reg_verb <- reg_verb %>%
+  mutate(perc_female = (Female_FEP + Female_HC) / (N_FEP + N_HC))
+
+#Now, meta-regression 
+#PUBLICATION YEAR
+#Making escalc object 
+verb_reg <- escalc(measure = "SMD", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = reg_verb, slab = paste(Study, Outcome_measure))
+#Random effects model meta-analysis PUBLICATION YEAR
+verb_reg_result1 <- rma(yi, vi, mods = ~ Publication_year, data=verb_reg)
+summary(verb_reg_result1)
+
+#PERCENTAGE FEMALE
+verb_reg_result2 <- rma(yi, vi, mods = ~ perc_female, data=verb_reg)
+summary(verb_reg_result2)
+
+#AGE
+verb_reg_result3 <- rma(yi, vi, mods = ~ w_mean_age, data = verb_reg)
+summary(verb_reg_result3)
+
+#Years of education
+verb_reg_result4 <- rma(yi, vi, mods = ~ w_mean_edu, data = verb_reg)
+summary(verb_reg_result4)
+
+#NOS
+verb_reg_result5 <- rma(yi, vi, mods = ~ NOS, data = verb_reg)
+summary(verb_reg_result5)
+
+```
+
+### Visual learning
+
+```{r}
+#Load data
+reg_vis <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Visual_memory_reg_data.xlsx") 
+#Change character vectors to numeric: 
+reg_vis$Mean_FEP <- as.numeric(reg_vis$Mean_FEP)
+reg_vis$SD_FEP <- as.numeric(reg_vis$SD_FEP)
+reg_vis$Mean_HC <- as.numeric(reg_vis$Mean_HC)
+reg_vis$SD_HC <- as.numeric(reg_vis$SD_HC)
+
+#Add weighted age variable
+reg_vis$Age_FEP <- as.numeric(reg_vis$Age_FEP) #Patient age
+reg_vis$Age_HC <- as.numeric(reg_vis$Age_HC) # HC age
+reg_vis <- reg_vis %>%
+  rowwise() %>%
+  mutate(w_mean_age = (weighted.mean(across(starts_with("Age")), across(starts_with("N_")), na.rm = TRUE)))
+
+#Add weighted education variable
+reg_vis$Edu_mean_FEP <- as.numeric(reg_vis$Edu_mean_FEP) #Patient education
+reg_vis$Edu_mean_HC <- as.numeric(reg_vis$Edu_mean_HC) #HC education
+reg_vis <- reg_vis %>%
+  rowwise() %>%
+  mutate(w_mean_edu = (weighted.mean(across(starts_with("Edu")), across(starts_with("N_")), na.rm = TRUE)))
+
+#Add gender variable (percentage female)
+reg_vis$Female_FEP <- as.numeric(reg_vis$Female_FEP)#make numeric
+reg_vis$Female_HC <- as.numeric(reg_vis$Female_HC)
+reg_vis <- reg_vis %>%
+  mutate(perc_female = (Female_FEP + Female_HC) / (N_FEP + N_HC))
+
+#Now, meta-regression 
+#PUBLICATION YEAR
+#Making escalc object 
+vis_reg <- escalc(measure = "SMD", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = reg_vis, slab = paste(Study, Outcome_measure))
+#Random effects model meta-analysis PUBLICATION YEAR
+vis_reg_result1 <- rma(yi, vi, mods = ~ Publication_year, data=vis_reg)
+summary(vis_reg_result1)
+
+#PERCENTAGE FEMALE
+vis_reg_result2 <- rma(yi, vi, mods = ~ perc_female, data=vis_reg)
+summary(vis_reg_result2)
+
+#AGE
+vis_reg_result3 <- rma(yi, vi, mods = ~ w_mean_age, data = vis_reg)
+summary(vis_reg_result3)
+
+#Years of education
+vis_reg_result4 <- rma(yi, vi, mods = ~ w_mean_edu, data = vis_reg)
+summary(vis_reg_result4)
+
+#NOS
+vis_reg_result5 <- rma(yi, vi, mods = ~ NOS, data = vis_reg)
+summary(vis_reg_result5)
+
+```
+
+### Mazes
+
+```{r}
+#Load data
+reg_mazes <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Mazes_reg_data.xlsx") 
+#Change character vectors to numeric: 
+reg_mazes$Mean_FEP <- as.numeric(reg_mazes$Mean_FEP)
+reg_mazes$SD_FEP <- as.numeric(reg_mazes$SD_FEP)
+reg_mazes$Mean_HC <- as.numeric(reg_mazes$Mean_HC)
+reg_mazes$SD_HC <- as.numeric(reg_mazes$SD_HC)
+
+#Add weighted age variable
+reg_mazes$Age_FEP <- as.numeric(reg_mazes$Age_FEP) #Patient age
+reg_mazes$Age_HC <- as.numeric(reg_mazes$Age_HC) # HC age
+reg_mazes <- reg_mazes %>%
+  rowwise() %>%
+  mutate(w_mean_age = (weighted.mean(across(starts_with("Age")), across(starts_with("N_")), na.rm = TRUE)))
+
+#Add weighted education variable
+reg_mazes$Edu_mean_FEP <- as.numeric(reg_mazes$Edu_mean_FEP) #Patient education
+reg_mazes$Edu_mean_HC <- as.numeric(reg_mazes$Edu_mean_HC) #HC education
+reg_mazes <- reg_mazes %>%
+  rowwise() %>%
+  mutate(w_mean_edu = (weighted.mean(across(starts_with("Edu")), across(starts_with("N_")), na.rm = TRUE)))
+
+#Add gender variable (percentage female)
+reg_mazes$Female_FEP <- as.numeric(reg_mazes$Female_FEP)#make numeric
+reg_mazes$Female_HC <- as.numeric(reg_mazes$Female_HC)
+reg_mazes <- reg_mazes %>%
+  mutate(perc_female = (Female_FEP + Female_HC) / (N_FEP + N_HC))
+
+#Now, meta-regression 
+#PUBLICATION YEAR
+#Making escalc object 
+mazes_reg <- escalc(measure = "SMD", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = reg_mazes, slab = paste(Study, Outcome_measure))
+#Random effects model meta-analysis PUBLICATION YEAR
+mazes_reg_result1 <- rma(yi, vi, mods = ~ Publication_year, data=mazes_reg)
+summary(mazes_reg_result1)
+
+#PERCENTAGE FEMALE
+mazes_reg_result2 <- rma(yi, vi, mods = ~ perc_female, data=mazes_reg)
+summary(mazes_reg_result2)
+
+#AGE
+mazes_reg_result3 <- rma(yi, vi, mods = ~ Age_FEP, data = mazes_reg)
+summary(mazes_reg_result3)
+
+#Years of education
+mazes_reg_result4 <- rma(yi, vi, mods = ~ Edu_mean_FEP, data = mazes_reg)
+summary(mazes_reg_result4)
+
+#NOS
+mazes_reg_result5 <- rma(yi, vi, mods = ~ NOS, data = mazes_reg)
+summary(mazes_reg_result5)
+
+
+```
+
+### Attention
+
+```{r}
+#Load data
+reg_att <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Attention_reg_data.xlsx") 
+#Change character vectors to numeric: 
+reg_att$Mean_FEP <- as.numeric(reg_att$Mean_FEP)
+reg_att$SD_FEP <- as.numeric(reg_att$SD_FEP)
+reg_att$Mean_HC <- as.numeric(reg_att$Mean_HC)
+reg_att$SD_HC <- as.numeric(reg_att$SD_HC)
+
+#Add weighted age variable
+reg_att$Age_FEP <- as.numeric(reg_att$Age_FEP) #Patient age
+reg_att$Age_HC <- as.numeric(reg_att$Age_HC) # HC age
+reg_att <- reg_att %>%
+  rowwise() %>%
+  mutate(w_mean_age = (weighted.mean(across(starts_with("Age")), across(starts_with("N_")), na.rm = TRUE)))
+
+#Add weighted education variable
+reg_att$Edu_mean_FEP <- as.numeric(reg_att$Edu_mean_FEP) #Patient education
+reg_att$Edu_mean_HC <- as.numeric(reg_att$Edu_mean_HC) #HC education
+reg_att <- reg_att %>%
+  rowwise() %>%
+  mutate(w_mean_edu = (weighted.mean(across(starts_with("Edu")), across(starts_with("N_")), na.rm = TRUE)))
+
+#Add gender variable (percentage female)
+reg_att$Female_FEP <- as.numeric(reg_att$Female_FEP)#make numeric
+reg_att$Female_HC <- as.numeric(reg_att$Female_HC)
+reg_att <- reg_att %>%
+  mutate(perc_female = (Female_FEP + Female_HC) / (N_FEP + N_HC))
+
+#Now, meta-regression 
+#PUBLICATION YEAR
+#Making escalc object 
+att_reg <- escalc(measure = "SMD", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = reg_att, slab = paste(Study, Outcome_measure))
+#Random effects model meta-analysis PUBLICATION YEAR
+att_reg_result1 <- rma(yi, vi, mods = ~ Publication_year, data=att_reg)
+summary(att_reg_result1)
+
+#PERCENTAGE FEMALE
+att_reg_result2 <- rma(yi, vi, mods = ~ perc_female, data=att_reg)
+summary(att_reg_result2)
+
+#AGE
+att_reg_result3 <- rma(yi, vi, mods = ~ w_mean_age, data = att_reg)
+summary(att_reg_result3)
+
+#Years of education
+att_reg_result4 <- rma(yi, vi, mods = ~ w_mean_edu, data = att_reg)
+summary(att_reg_result4)
+
+#NOS
+att_reg_result5 <- rma(yi, vi, mods = ~ NOS, data = att_reg)
+summary(att_reg_result5)
+
+```
+
+### Processing speed
+
+```{r}
+
+#Load data
+reg_sop <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/SOP_reg_data.xlsx") 
+#Change character vectors to numeric: 
+reg_sop$Mean_FEP <- as.numeric(reg_sop$Mean_FEP)
+reg_sop$SD_FEP <- as.numeric(reg_sop$SD_FEP)
+reg_sop$Mean_HC <- as.numeric(reg_sop$Mean_HC)
+reg_sop$SD_HC <- as.numeric(reg_sop$SD_HC)
+
+#Add weighted age variable
+reg_sop$Age_FEP <- as.numeric(reg_sop$Age_FEP) #Patient age
+reg_sop$Age_HC <- as.numeric(reg_sop$Age_HC) # HC age
+reg_sop <- reg_sop %>%
+  rowwise() %>%
+  mutate(w_mean_age = (weighted.mean(across(starts_with("Age")), across(starts_with("N_")), na.rm = TRUE)))
+
+#Add weighted education variable
+reg_sop$Edu_mean_FEP <- as.numeric(reg_sop$Edu_mean_FEP) #Patient education
+reg_sop$Edu_mean_HC <- as.numeric(reg_sop$Edu_mean_HC) #HC education
+reg_sop <- reg_sop %>%
+  rowwise() %>%
+  mutate(w_mean_edu = (weighted.mean(across(starts_with("Edu")), across(starts_with("N_")), na.rm = TRUE)))
+
+#Add gender variable (percentage female)
+reg_sop$Female_FEP <- as.numeric(reg_sop$Female_FEP)#make numeric
+reg_sop$Female_HC <- as.numeric(reg_sop$Female_HC)
+reg_sop <- reg_sop %>%
+  mutate(perc_female = (Female_FEP + Female_HC) / (N_FEP + N_HC))
+
+#Making TMT A raw values negative
+#Find rows that need to be changed
+row_to_make_neg <- which(reg_sop$High_Low == "Low")
+
+#OBS, (semi)HARD CODED!!
+
+for (i in 1:length(row_to_make_neg)) {
+  
+  reg_sop[row_to_make_neg[i],5] <- reg_sop[row_to_make_neg[i],5]*-1 #FEP Mean column
+  reg_sop[row_to_make_neg[i],7] <- reg_sop[row_to_make_neg[i],7]*-1 #HC Mean column
+}
+
+#Making escalc object 
+sop_reg <- escalc(measure = "SMD", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = reg_sop, slab = paste(Study, Outcome_measure))
+
+#We assume that effect sizes are correlated around 0.5 within studies/samples 
+V_sop_reg <- vcalc(vi, cluster=Study, obs=Outcome_measure, data=sop_reg, rho=0.5)
+
+#Now, meta-regression 
+
+### fit multilevel model using this approximate V matrix
+#PUBLICATION YEAR
+sop_reg_result1 <- rma.mv(yi, V_sop_reg, random = ~ 1 | Study/Outcome_measure, mods = ~ Publication_year, data=sop_reg, digits=3)
+
+#PERCENTAGE FEMALE
+sop_reg_result2 <- rma.mv(yi, V_sop_reg, random = ~ 1 | Study/Outcome_measure, mods = ~ perc_female, data=sop_reg, digits=3)
+summary(sop_reg_result2)
+
+#AGE
+sop_reg_result3 <- rma.mv(yi, V_sop_reg, random = ~ 1 | Study/Outcome_measure, mods = ~ w_mean_age, data=sop_reg, digits=3)
+summary(sop_reg_result3)
+
+#Years of education
+sop_reg_result4 <- rma.mv(yi, V_sop_reg, random = ~ 1 | Study/Outcome_measure, mods = ~ w_mean_edu, data=sop_reg, digits=3)
+summary(sop_reg_result4)
+
+#NOS
+sop_reg_result5 <- rma.mv(yi, V_sop_reg, random = ~ 1 | Study/Outcome_measure, mods = ~ NOS, data = sop_reg, digits = 3)
+summary(sop_reg_result5)
+
+```
+
+
+### Working memory
+
+```{r}
+#Load data
+reg_wm <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Working_memory_reg_data.xlsx") 
+#Change character vectors to numeric: 
+reg_wm$Mean_FEP <- as.numeric(reg_wm$Mean_FEP)
+reg_wm$SD_FEP <- as.numeric(reg_wm$SD_FEP)
+reg_wm$Mean_HC <- as.numeric(reg_wm$Mean_HC)
+reg_wm$SD_HC <- as.numeric(reg_wm$SD_HC)
+
+#Add weighted age variable
+reg_wm$Age_FEP <- as.numeric(reg_wm$Age_FEP) #Patient age
+reg_wm$Age_HC <- as.numeric(reg_wm$Age_HC) # HC age
+reg_wm <- reg_wm %>%
+  rowwise() %>%
+  mutate(w_mean_age = (weighted.mean(across(starts_with("Age")), across(starts_with("N_")), na.rm = TRUE)))
+
+#Add weighted education variable
+reg_wm$Edu_mean_FEP <- as.numeric(reg_wm$Edu_mean_FEP) #Patient education
+reg_wm$Edu_mean_HC <- as.numeric(reg_wm$Edu_mean_HC) #HC education
+reg_wm <- reg_wm %>%
+  rowwise() %>%
+  mutate(w_mean_edu = (weighted.mean(across(starts_with("Edu")), across(starts_with("N_")), na.rm = TRUE)))
+
+#Add gender variable (percentage female)
+reg_wm$Female_FEP <- as.numeric(reg_wm$Female_FEP)#make numeric
+reg_wm$Female_HC <- as.numeric(reg_wm$Female_HC)
+reg_wm <- reg_wm %>%
+  mutate(perc_female = (Female_FEP + Female_HC) / (N_FEP + N_HC))
+
+#Find rows that need to be changed
+row_to_make_neg <- which(reg_wm$High_Low == "Low")
+
+#OBS, (semi)HARD CODED!!
+
+for (i in 1:length(row_to_make_neg)) {
+  
+  reg_wm[row_to_make_neg[i],5] <- reg_wm[row_to_make_neg[i],5]*-1 #FEP Mean column
+  reg_wm[row_to_make_neg[i],7] <- reg_wm[row_to_make_neg[i],7]*-1 #HC Mean column
+}
+
+#Making escalc object 
+wm_reg <- escalc(measure = "SMD", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = reg_wm, slab = paste(Study, Outcome_measure))
+
+#We assume that effect sizes are correlated around 0.5 within studies/samples 
+V_wm_reg <- vcalc(vi, cluster=Study, obs=Outcome_measure, data=wm_reg, rho=0.5)
+
+#Now, meta-regression 
+
+### fit multilevel model using this approximate V matrix
+#PUBLICATION YEAR
+wm_reg_result1 <- rma.mv(yi, V_wm_reg, random = ~ 1 | Study/Outcome_measure, mods = ~ Publication_year, data=wm_reg, digits=3)
+
+#PERCENTAGE FEMALE
+wm_reg_result2 <- rma.mv(yi, V_wm_reg, random = ~ 1 | Study/Outcome_measure, mods = ~ perc_female, data=wm_reg, digits=3)
+summary(wm_reg_result2)
+
+#AGE
+wm_reg_result3 <- rma.mv(yi, V_wm_reg, random = ~ 1 | Study/Outcome_measure, mods = ~ w_mean_age, data=wm_reg, digits=3)
+summary(wm_reg_result3)
+
+#Years of education
+wm_reg_result4 <- rma.mv(yi, V_wm_reg, random = ~ 1 | Study/Outcome_measure, mods = ~ w_mean_edu, data=wm_reg, digits=3)
+summary(wm_reg_result4)
+
+#NOS
+wm_reg_result5 <- rma.mv(yi, V_wm_reg, random = ~ 1 | Study/Outcome_measure, mods = ~ NOS, data=wm_reg, digits=3)
+summary(wm_reg_result5)
+
+```
+
+### Executive function
+
+```{r}
+
+#Load data
+reg_ef <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Executive_function_reg_data.xlsx") 
+#Change character vectors to numeric: 
+reg_ef$Mean_FEP <- as.numeric(reg_ef$Mean_FEP)
+reg_ef$SD_FEP <- as.numeric(reg_ef$SD_FEP)
+reg_ef$Mean_HC <- as.numeric(reg_ef$Mean_HC)
+reg_ef$SD_HC <- as.numeric(reg_ef$SD_HC)
+
+#Add weighted age variable
+reg_ef$Age_FEP <- as.numeric(reg_ef$Age_FEP) #Patient age
+reg_ef$Age_HC <- as.numeric(reg_ef$Age_HC) # HC age
+reg_ef <- reg_ef %>%
+  rowwise() %>%
+  mutate(w_mean_age = (weighted.mean(across(starts_with("Age")), across(starts_with("N_")), na.rm = TRUE)))
+
+#Add weighted education variable
+reg_ef$Edu_mean_FEP <- as.numeric(reg_ef$Edu_mean_FEP) #Patient education
+reg_ef$Edu_mean_HC <- as.numeric(reg_ef$Edu_mean_HC) #HC education
+reg_ef <- reg_ef %>%
+  rowwise() %>%
+  mutate(w_mean_edu = (weighted.mean(across(starts_with("Edu")), across(starts_with("N_")), na.rm = TRUE)))
+
+#Add gender variable (percentage female)
+reg_ef$Female_FEP <- as.numeric(reg_ef$Female_FEP)#make numeric
+reg_ef$Female_HC <- as.numeric(reg_ef$Female_HC)
+reg_ef <- reg_ef %>%
+  mutate(perc_female = (Female_FEP + Female_HC) / (N_FEP + N_HC))
+
+#Find rows that need to be changed
+row_to_make_neg <- which(reg_ef$High_Low == "Low")
+
+#OBS, (semi)HARD CODED!!
+
+for (i in 1:length(row_to_make_neg)) {
+  
+  reg_ef[row_to_make_neg[i],5] <- reg_ef[row_to_make_neg[i],5]*-1 #FEP Mean column
+  reg_ef[row_to_make_neg[i],7] <- reg_ef[row_to_make_neg[i],7]*-1 #HC Mean column
+}
+
+#Making escalc object 
+ef_reg <- escalc(measure = "SMD", n1i = N_FEP, n2i = N_HC, m1i = Mean_FEP, m2i = Mean_HC, sd1i = SD_FEP, sd2i = SD_HC, data = reg_ef, slab = paste(Study, Outcome_measure))
+
+#We assume that effect sizes are correlated around 0.6 within studies/samples 
+V_ef_reg <- vcalc(vi, cluster=Study, obs=Outcome_measure, data=ef_reg, rho=0.6)
+
+#Now, meta-regression 
+
+### fit multilevel model using this approximate V matrix
+#PUBLICATION YEAR
+ef_reg_result1 <- rma.mv(yi, V_ef_reg, random = ~ 1 | Study/Outcome_measure, mods = ~ Publication_year, data=ef_reg, digits=3)
+
+#PERCENTAGE FEMALE
+ef_reg_result2 <- rma.mv(yi, V_ef_reg, random = ~ 1 | Study/Outcome_measure, mods = ~ perc_female, data=ef_reg, digits=3)
+summary(ef_reg_result2)
+
+#AGE
+ef_reg_result3 <- rma.mv(yi, V_ef_reg, random = ~ 1 | Study/Outcome_measure, mods = ~ w_mean_age, data=ef_reg, digits=3)
+summary(ef_reg_result3)
+
+#Years of education
+ef_reg_result4 <- rma.mv(yi, V_ef_reg, random = ~ 1 | Study/Outcome_measure, mods = ~ w_mean_edu, data=ef_reg, digits=3)
+summary(ef_reg_result4)
+
+#NOS
+ef_reg_result5 <- rma.mv(yi, V_ef_reg, random = ~ 1 | Study/Outcome_measure, mods = ~ NOS, data=ef_reg, digits=3)
+summary(ef_reg_result5)
+
+
+```
+
+
+
+
+
+
+# Data on the sample
+
+```{r}
+#Load data
+all_meta <- read_excel("~/Library/CloudStorage/OneDrive-KarolinskaInstitutet/KaSP_Kognition/Förnyad metaanalys/Analys/Master_inmatning.xlsx")
+glimpse(all_meta)
+all_tidy <- all_meta %>%
+  select(Study:DUP_median, Country)
+
+sum(all_tidy$N_FEP)+sum(all_tidy$N_HC)
+#5542
+sum(all_tidy$N_FEP)
+#2625
+sum(all_tidy$N_HC)
+#2917
+
+#Mean age
+all_tidy$Age_FEP_mean <- as.numeric(all_tidy$Age_FEP_mean)
+all_tidy$Age_HC_mean <- as.numeric(all_tidy$Age_HC_mean)
+
+Age_summaryFEP <- all_tidy %>%
+  dplyr::summarise(
+    mean = mean(Age_FEP_mean, na.rm = TRUE),
+    std_dev = sd(Age_FEP_mean, na.rm = TRUE),
+    median = median(Age_FEP_mean, na.rm = TRUE),
+    interquartile_range = IQR(Age_FEP_mean, na.rm = TRUE),
+    n_total = length(Age_FEP_mean),
+    n_NA = sum(is.na(Age_FEP_mean)),
+    n = length(Age_FEP_mean)-sum(is.na(Age_FEP_mean))
+  ) %>%
+  round(., 2)
+
+Age_summaryHC <- all_tidy %>%
+  dplyr::summarise(
+    mean = mean(Age_HC_mean, na.rm = TRUE),
+    std_dev = sd(Age_HC_mean, na.rm = TRUE),
+    median = median(Age_HC_mean, na.rm = TRUE),
+    interquartile_range = IQR(Age_HC_mean, na.rm = TRUE),
+    n_total = length(Age_HC_mean),
+    n_NA = sum(is.na(Age_HC_mean)),
+    n = length(Age_HC_mean)-sum(is.na(Age_HC_mean))
+  ) %>%
+  round(., 2)
+#Why less studies with age for HC? 
+
+#Mean education
+all_tidy$Edu_mean_FEP <- as.numeric(all_tidy$Edu_mean_FEP)
+all_tidy$Edu_mean_HC <- as.numeric(all_tidy$Edu_mean_HC)
+
+Edu_summaryFEP <- all_tidy %>%
+  dplyr::summarise(
+    mean = mean(Edu_mean_FEP, na.rm = TRUE),
+    std_dev = sd(Edu_mean_FEP, na.rm = TRUE),
+    median = median(Edu_mean_FEP, na.rm = TRUE),
+    interquartile_range = IQR(Edu_mean_FEP, na.rm = TRUE),
+    n_total = length(Edu_mean_FEP),
+    n_NA = sum(is.na(Edu_mean_FEP)),
+    n = length(Edu_mean_FEP)-sum(is.na(Edu_mean_FEP))
+  ) %>%
+  round(., 2)
+
+Edu_summaryHC <- all_tidy %>%
+  dplyr::summarise(
+    mean = mean(Edu_mean_HC, na.rm = TRUE),
+    std_dev = sd(Edu_mean_HC, na.rm = TRUE),
+    median = median(Edu_mean_HC, na.rm = TRUE),
+    interquartile_range = IQR(Edu_mean_HC, na.rm = TRUE),
+    n_total = length(Edu_mean_HC),
+    n_NA = sum(is.na(Edu_mean_HC)),
+    n = length(Edu_mean_HC)-sum(is.na(Edu_mean_HC))
+  ) %>%
+  round(., 2)
+
+#Proportion of women #Write something about where gender ratio was known? 
+all_tidy$N_female_FEP <- as.numeric(all_tidy$N_female_FEP)
+all_tidy$N_female_HC <- as.numeric(all_tidy$N_female_HC)
+
+#Remove studies where no data on gender
+all_tidy_gender <- filter(all_tidy, !is.na(N_female_FEP))
+
+sum(all_tidy_gender$N_FEP)
+#2412
+sum(all_tidy_gender$N_female_FEP)
+#969
+969/2412
+#0.4017413
+sum(all_tidy_gender$N_HC)
+#2709
+sum(all_tidy_gender$N_female_HC)
+#1223
+1223/2709
+#0.4514581
+
+#DUP
+all_tidy$DUP_mean_months
+all_tidy$DUP_mean_months <- as.numeric(all_tidy$DUP_mean_months)
+
+DUP_summary <- all_tidy %>%
+  dplyr::summarise(
+    mean = mean(DUP_mean_months, na.rm = TRUE),
+    std_dev = sd(DUP_mean_months, na.rm = TRUE),
+    median = median(DUP_mean_months, na.rm = TRUE),
+    interquartile_range = IQR(DUP_mean_months, na.rm = TRUE),
+    n_total = length(DUP_mean_months),
+    n_NA = sum(is.na(DUP_mean_months)),
+    n = length(DUP_mean_months)-sum(is.na(DUP_mean_months))
+  ) %>%
+  round(., 2)
+
+```
+
